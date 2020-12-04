@@ -50,6 +50,13 @@ public class StateMachine extends GenericProtocol {
     private List<Host> membership;
     private int nextInstance;
 
+    // ter uma mapeamente de operações para instancias de paxos (em que criamos uma classe que guarda
+    // o estado do paxos - memberhsip, highest prepare, etc..)
+
+    //ter um if que vê se vamos usar o paxos ou o multi paxos (se replica é lider fixe, senao
+    // temos de redirecionar a operação para o lider e quando muda o lider temos de avisar a
+    // state machine)
+
     public StateMachine(Properties props) throws IOException, HandlerRegistrationException {
         super(PROTOCOL_NAME, PROTOCOL_ID);
         nextInstance = 0;
