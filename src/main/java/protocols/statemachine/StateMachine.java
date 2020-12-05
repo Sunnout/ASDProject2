@@ -1,6 +1,11 @@
 package protocols.statemachine;
 
+import io.netty.buffer.ByteBuf;
 import protocols.agreement.notifications.JoinedNotification;
+import protocols.statemachine.messages.CurrentStateMessage;
+import protocols.statemachine.messages.AddReplicaMessage;
+import protocols.statemachine.utils.PaxosState;
+import protocols.app.utils.Operation;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
@@ -19,9 +24,7 @@ import protocols.statemachine.requests.OrderRequest;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
 
 /**
  * This is NOT fully functional StateMachine implementation.
@@ -36,6 +39,10 @@ import java.util.Properties;
  */
 public class StateMachine extends GenericProtocol {
     private static final Logger logger = LogManager.getLogger(StateMachine.class);
+    public final static String ADD_REPLICA = "add";
+    public final static String REMOVE_REPLICA = "remove";
+    public final static byte MEMBERSHIP_OP_TYPE = 2;
+
 
     private enum State {JOINING, ACTIVE}
 
@@ -47,19 +54,32 @@ public class StateMachine extends GenericProtocol {
     private final int channelId; //Id of the created channel
 
     private State state;
+
+    // Estado atual
     private List<Host> membership;
     private int nextInstance;
+    private Map<Integer, PaxosState> previousPaxos;
 
-    // ter uma mapeamente de operações para instancias de paxos (em que criamos uma classe que guarda
+    private List<Operation> pendingOps;
+
+
+
+
+    // ter uma mapeamento de operações para instancias de paxos (em que criamos uma classe que guarda
     // o estado do paxos - memberhsip, highest prepare, etc..)
 
     //ter um if que vê se vamos usar o paxos ou o multi paxos (se replica é lider fixe, senao
     // temos de redirecionar a operação para o lider e quando muda o lider temos de avisar a
     // state machine)
 
+    // add replica e remove replica (quando se junta replica, dizer a posição da State Machine em que foi
+    // adicionada para depois o paxos saber
+
     public StateMachine(Properties props) throws IOException, HandlerRegistrationException {
         super(PROTOCOL_NAME, PROTOCOL_ID);
         nextInstance = 0;
+        previousPaxos = new HashMap<>();
+        pendingOps = new LinkedList<>();
 
         String address = props.getProperty("address");
         String port = props.getProperty("p2p_port");
@@ -82,8 +102,16 @@ public class StateMachine extends GenericProtocol {
         registerChannelEventHandler(channelId, InConnectionUp.EVENT_ID, this::uponInConnectionUp);
         registerChannelEventHandler(channelId, InConnectionDown.EVENT_ID, this::uponInConnectionDown);
 
+        /*--------------------- Register Message Serializers ----------------------------- */
+        registerMessageSerializer(channelId, AddReplicaMessage.MSG_ID, AddReplicaMessage.serializer);
+        registerMessageSerializer(channelId, CurrentStateMessage.MSG_ID, CurrentStateMessage.serializer);
+
         /*--------------------- Register Request Handlers ----------------------------- */
         registerRequestHandler(OrderRequest.REQUEST_ID, this::uponOrderRequest);
+
+        /*--------------------- Register Message Handlers ----------------------------- */
+        registerMessageHandler(channelId, AddReplicaMessage.MSG_ID, this::uponAddReplicaMsg, this::uponMsgFail);
+        registerMessageHandler(channelId, CurrentStateMessage.MSG_ID, this::uponCurrentStateMsg, this::uponMsgFail);
 
         /*--------------------- Register Notification Handlers ----------------------------- */
         subscribeNotification(DecidedNotification.NOTIFICATION_ID, this::uponDecidedNotification);
@@ -118,6 +146,9 @@ public class StateMachine extends GenericProtocol {
         } else {
             state = State.JOINING;
             logger.info("Starting in JOINING as I am not part of initial membership");
+            Random r = new Random();
+            Host toContact = membership.get(r.nextInt(initialMembership.size()));
+            openConnection(toContact);
             //You have to do something to join the system and know which instance you joined
             // (and copy the state of that instance)
         }
@@ -133,18 +164,44 @@ public class StateMachine extends GenericProtocol {
             //Also do something starter, we don't want an infinite number of instances active
         	//Maybe you should modify what is it that you are proposing so that you remember that this
         	//operation was issued by the application (and not an internal operation, check the uponDecidedNotification)
-            sendRequest(new ProposeRequest(nextInstance++, request.getOpId(), request.getOperation()),
+            sendRequest(new ProposeRequest(nextInstance, request.getOpId(), request.getOperation()),
                     IncorrectAgreement.PROTOCOL_ID);
         }
     }
 
     /*--------------------------------- Notifications ---------------------------------------- */
-    private void uponDecidedNotification(DecidedNotification notification, short sourceProto) {
+    private void uponDecidedNotification(DecidedNotification notification, short sourceProto) throws IOException {
         logger.debug("Received notification: " + notification);
-        //Maybe we should make sure operations are executed in order?
-        //You should be careful and check if this operation if an application operation (and send it up)
-        //or if this is an operations that was executed by the state machine itself (in which case you should execute)
-        triggerNotification(new ExecuteNotification(notification.getOpId(), notification.getOperation()));
+
+        Operation op = Operation.fromByteArray(notification.getOperation());
+        if(notification.getInstance() == nextInstance) {
+            if(pendingOps.get(0).equals(notification.getOperation()))
+                pendingOps.remove(0);
+            if(op.getOpType() != MEMBERSHIP_OP_TYPE)
+                triggerNotification(new ExecuteNotification(notification.getOpId(), notification.getOperation()));
+            else {
+                String[] hostElements = op.getData().toString().split(":");
+                Host h = new Host(InetAddress.getByName(hostElements[0]), Integer.parseInt(hostElements[1]));
+                if (op.getKey().equals(ADD_REPLICA)) {
+                    if(membership.add(h)) {
+                        openConnection(h);
+                        //TODO: avisar paxos
+                        // mandar estado ao gajo caso sejas o contacto
+                        //sendMessage(new CurrentStateMessage(this.membership, this.nextInstance, this.previousPaxos), host);
+                    }
+                }
+                else {
+                    if(membership.remove(h)) {
+                        closeConnection(h);
+                        //TODO: avisar paxos
+                    }
+                }
+            }
+            nextInstance++;
+        }
+        previousPaxos.put(notification.getInstance(),
+                new PaxosState(Operation.fromByteArray(notification.getOperation())));
+        //TODO: garatinr que outras ops são executadas
     }
 
     /*--------------------------------- Messages ---------------------------------------- */
@@ -153,9 +210,25 @@ public class StateMachine extends GenericProtocol {
         logger.error("Message {} to {} failed, reason: {}", msg, host, throwable);
     }
 
+    private void uponAddReplicaMsg(AddReplicaMessage msg, Host host, short sourceProto, int channelId) {
+        // TODO: open connection?? bidirecionais??
+
+        // TODO: passamos host em bytes
+        Operation op = new Operation(MEMBERSHIP_OP_TYPE, ADD_REPLICA, host.toString().getBytes());
+        pendingOps.add(op);
+    }
+
+    private void uponCurrentStateMsg(CurrentStateMessage msg, Host host, short sourceProto, int channelId) {
+        this.membership = msg.getMembership();
+        this.nextInstance = msg.getNextInstance();
+        this.previousPaxos = msg.getPreviousPaxos();
+    }
+
     /* --------------------------------- TCPChannel Events ---------------------------- */
     private void uponOutConnectionUp(OutConnectionUp event, int channelId) {
         logger.info("Connection to {} is up", event.getNode());
+        if(state == State.JOINING)
+            sendMessage(new AddReplicaMessage(self), event.getNode());
     }
 
     private void uponOutConnectionDown(OutConnectionDown event, int channelId) {
