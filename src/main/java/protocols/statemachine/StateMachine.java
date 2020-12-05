@@ -35,12 +35,12 @@ import java.util.*;
 /**
  * This is NOT fully functional StateMachine implementation.
  * This is simply an example of things you can do, and can be used as a starting point.
- *
+ * <p>
  * You are free to change/delete anything in this class, including its fields.
  * The only thing that you cannot change are the notifications/requests between the StateMachine and the APPLICATION
  * You can change the requests/notification between the StateMachine and AGREEMENT protocol, however make sure it is
  * coherent with the specification shown in the project description.
- *
+ * <p>
  * Do not assume that any logic implemented here is correct, think for yourself!
  */
 public class StateMachine extends GenericProtocol {
@@ -164,26 +164,31 @@ public class StateMachine extends GenericProtocol {
     }
 
     /*--------------------------------- Requests ---------------------------------------- */
-    private void uponOrderRequest(OrderRequest request, short sourceProto) throws IOException {
-        logger.debug("Received request: " + request);
-        if (state == State.JOINING) {
-            pendingOps.add(new OperationAndId(Operation.fromByteArray(request.getOperation()), request.getOpId()));
+    private void uponOrderRequest(OrderRequest request, short sourceProto){
+        try {
+            logger.debug("Received request: " + request);
 
-        } else if (state == State.ACTIVE) {
+            if ((state == State.ACTIVE) && pendingOps.size() == 0) {
+                sendRequest(new ProposeRequest(nextInstance, request.getOpId(), request.getOperation()),
+                        IncorrectAgreement.PROTOCOL_ID);
+            }
             //Also do something starter, we don't want an infinite number of instances active
-        	//Maybe you should modify what is it that you are proposing so that you remember that this
-        	//operation was issued by the application (and not an internal operation, check the uponDecidedNotification)
-            sendRequest(new ProposeRequest(nextInstance, request.getOpId(), request.getOperation()),
-                    IncorrectAgreement.PROTOCOL_ID);
+            //Maybe you should modify what is it that you are proposing so that you remember that this
+            //operation was issued by the application (and not an internal operation, check the uponDecidedNotification)
+            pendingOps.add(new OperationAndId(Operation.fromByteArray(request.getOperation()), request.getOpId()));
         }
+        catch (Exception e){
+            e.printStackTrace();
+        }
+
     }
 
     /*--------------------------------- Replies ---------------------------------------- */
-    private void uponCurrentStateReply(CurrentStateReply reply, short sourceProto){
+    private void uponCurrentStateReply(CurrentStateReply reply, short sourceProto) {
         int instance = reply.getInstance();
         Iterator<Host> it = toSendState.get(instance).iterator();
 
-        while(it.hasNext()){
+        while (it.hasNext()) {
             Host h = it.next();
             sendMessage(new CurrentStateMessage(instance, reply.getState(), membership), h);
             it.remove();
@@ -191,58 +196,67 @@ public class StateMachine extends GenericProtocol {
     }
 
     /*--------------------------------- Notifications ---------------------------------------- */
-    private void uponDecidedNotification(DecidedNotification notification, short sourceProto) throws IOException {
-        logger.debug("Received notification: " + notification);
-        Operation op = Operation.fromByteArray(notification.getOperation());
+    private void uponDecidedNotification(DecidedNotification notification, short sourceProto) {
+        try {
+            logger.debug("Received notification: " + notification);
+            Operation op = Operation.fromByteArray(notification.getOperation());
 
-        if(notification.getInstance() == nextInstance) {
-            if(pendingOps.get(0).equals(op))
-                pendingOps.remove(0);
+            if (notification.getInstance() == nextInstance) {
+                if (pendingOps.get(0).equals(op))
+                    pendingOps.remove(0);
 
-            if(op.getOpType() != MEMBERSHIP_OP_TYPE)
-                triggerNotification(new ExecuteNotification(notification.getOpId(), notification.getOperation()));
+                if (op.getOpType() != MEMBERSHIP_OP_TYPE)
+                    triggerNotification(new ExecuteNotification(notification.getOpId(), notification.getOperation()));
 
-            else {
-                String[] hostElements = op.getData().toString().split(":");
-                Host h = new Host(InetAddress.getByName(hostElements[0]), Integer.parseInt(hostElements[1]));
+                else {
+                    String[] hostElements = op.getData().toString().split(":");
+                    Host h = new Host(InetAddress.getByName(hostElements[0]), Integer.parseInt(hostElements[1]));
 
-                if (op.getKey().equals(ADD_REPLICA)) {
-                    toSendState.get(nextInstance).add(h);
+                    if (op.getKey().equals(ADD_REPLICA)) {
+                        toSendState.get(nextInstance).add(h);
 
-                    if(!membership.contains(h)) {
-                        membership.add(h);
-                        openConnection(h);
+                        if (!membership.contains(h)) {
+                            membership.add(h);
+                            openConnection(h);
 
-                        //TODO sourceProto??
-                        if(toSendState.containsValue(h))
-                            sendRequest(new CurrentStateRequest(nextInstance), sourceProto);
+                            if (toSendState.containsValue(h))
+                                sendRequest(new CurrentStateRequest(nextInstance), sourceProto);
 
-                        //Avisar Paxos
-                        //TODO como garantir que não começa instância de paxos antes de haver estado instalado?
-                        sendRequest(new AddReplicaRequest(nextInstance, h), sourceProto);
+                            //Avisar Paxos
+                            //TODO como garantir que não começa instância de paxos antes de haver estado instalado?
+                            sendRequest(new AddReplicaRequest(nextInstance, h), sourceProto);
+                        }
+
+                    } else {
+                        if (membership.contains(h)) {
+                            membership.remove(h);
+                            closeConnection(h);
+                            sendRequest(new RemoveReplicaRequest(nextInstance, h), sourceProto);
+                        }
                     }
+                }
 
-                } else {
-                    if(membership.contains(h)) {
-                        membership.remove(h);
-                        closeConnection(h);
-                        sendRequest(new RemoveReplicaRequest(nextInstance, h), sourceProto);
-                    }
+                nextInstance++;
+
+                PaxosState state;
+                while (previousPaxos.containsKey(nextInstance)) {
+                    state = previousPaxos.get(nextInstance++);
+                    triggerNotification(new ExecuteNotification(state.getOpId(), state.getDecision().toByteArray()));
                 }
             }
 
-            nextInstance++;
+            previousPaxos.put(notification.getInstance(),
+                    new PaxosState(op, notification.getOpId()));
 
-            PaxosState state;
-            while(previousPaxos.containsKey(nextInstance)){
-                state = previousPaxos.get(nextInstance++);
-                triggerNotification(new ExecuteNotification(state.getOpId(), state.getDecision().toByteArray()));
+            if (pendingOps.size() > 0) {
+                OperationAndId opnId = pendingOps.get(0);
+                sendRequest(new ProposeRequest(nextInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
+                        IncorrectAgreement.PROTOCOL_ID);
             }
         }
-
-        previousPaxos.put(notification.getInstance(),
-                new PaxosState(op, notification.getOpId()));
-        //TODO: garantir que outras ops são executadas
+        catch (Exception e){
+            e.printStackTrace();
+        }
     }
 
     /*--------------------------------- Messages ---------------------------------------- */
@@ -269,7 +283,7 @@ public class StateMachine extends GenericProtocol {
     /* --------------------------------- TCPChannel Events ---------------------------- */
     private void uponOutConnectionUp(OutConnectionUp event, int channelId) {
         logger.info("Connection to {} is up", event.getNode());
-        if(state == State.JOINING)
+        if (state == State.JOINING)
             sendMessage(new AddReplicaMessage(self), event.getNode());
     }
 
@@ -281,7 +295,7 @@ public class StateMachine extends GenericProtocol {
         logger.debug("Connection to {} failed, cause: {}", event.getNode(), event.getCause());
         //Maybe we don't want to do this forever. At some point we assume he is no longer there.
         //Also, maybe wait a little bit before retrying, or else you'll be trying 1000s of times per second
-        if(membership.contains(event.getNode()))
+        if (membership.contains(event.getNode()))
             openConnection(event.getNode());
     }
 

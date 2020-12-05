@@ -8,6 +8,7 @@ import protocols.agreement.notifications.JoinedNotification;
 import protocols.agreement.requests.AddReplicaRequest;
 import protocols.agreement.requests.ProposeRequest;
 import protocols.agreement.requests.RemoveReplicaRequest;
+import protocols.app.utils.Operation;
 import protocols.statemachine.notifications.ChannelReadyNotification;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
@@ -19,13 +20,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
 
-/**
- * This is NOT a correct agreement protocol (it is actually a VERY wrong one)
- * This is simply an example of things you can do, and can be used as a starting point.
- *
- * You are free to change/delete ANYTHING in this class, including its fields.
- * Do not assume that any logic implemented here is correct, think for yourself!
- */
 public class PaxosAgreement extends GenericProtocol {
 
     private static final Logger logger = LogManager.getLogger(PaxosAgreement.class);
@@ -37,11 +31,19 @@ public class PaxosAgreement extends GenericProtocol {
     private Host myself;
     private int joinedInstance;
     private List<Host> membership;
+    private int highestPrepare;
+    private int highestAccept;
+    private Operation highestAcceptedValue;
+    private Operation decision;
+    private int numberAcceptsOK;
+
 
     public PaxosAgreement(Properties props) throws IOException, HandlerRegistrationException {
         super(PROTOCOL_NAME, PROTOCOL_ID);
         joinedInstance = -1; //-1 means we have not yet joined the system
         membership = null;
+        highestPrepare = 0;
+        
 
         /*--------------------- Register Timer Handlers ----------------------------- */
 
