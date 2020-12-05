@@ -89,7 +89,7 @@ public class HashApp extends GenericProtocol {
     public void init(Properties props) {
     }
 
-    private void uponCurrentStateRequest(CurrentStateRequest req, short sourceProto) {
+    private void uponCurrentStateRequest(CurrentStateRequest req,  short sourceProto) {
         byte[] state;
         try {
             state = this.getCurrentState();

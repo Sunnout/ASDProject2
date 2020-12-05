@@ -1,7 +1,6 @@
 package protocols.statemachine.messages;
 
 import io.netty.buffer.ByteBuf;
-import protocols.statemachine.utils.PaxosState;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
 import pt.unl.fct.di.novasys.network.ISerializer;
 import pt.unl.fct.di.novasys.network.data.Host;
@@ -12,59 +11,65 @@ import java.util.List;
 
 public class CurrentStateMessage extends ProtoMessage {
 
-    public final static short MSG_ID = 201;
+    public static final short MSG_ID = 203;
 
-    private final int nextInstance;
-    private final List<Host> membership;
-    private final List<PaxosState> previousPaxos;
+    private int instance;
+    private byte[] state;
+    private List<Host> membership;
 
-    public CurrentStateMessage(List<Host> membership, int nextInstance, List<PaxosState> previousPaxos) {
+    public CurrentStateMessage(int instance, byte[] state, List<Host> membership) {
         super(MSG_ID);
+        this.instance = instance;
+        this.state = state;
         this.membership = membership;
-        this.nextInstance = nextInstance;
-        this.previousPaxos = previousPaxos;
+    }
+
+    public int getInstance() {
+        return this.instance;
+    }
+
+    public byte[] getState() {
+        return this.state;
     }
 
     public List<Host> getMembership() {
         return membership;
     }
 
-    public int getNextInstance() {
-        return nextInstance;
-    }
-
-    public List<PaxosState> getPreviousPaxos() {
-        return previousPaxos;
+    @Override
+    public String toString() {
+        return "CurrentStateReply{" +
+                "instance=" + instance +
+                "number of bytes=" + state.length +
+                '}';
     }
 
     public static ISerializer<CurrentStateMessage> serializer = new ISerializer<CurrentStateMessage>() {
         @Override
         public void serialize(CurrentStateMessage msg, ByteBuf out) throws IOException {
-            out.writeInt(msg.nextInstance);
+            out.writeInt(msg.instance);
+            out.writeInt(msg.state.length);
+            out.writeBytes(msg.state);
             out.writeInt(msg.membership.size());
-            for (Host h : msg.membership)
+            for(Host h: msg.membership)
                 Host.serializer.serialize(h, out);
-
-            out.writeInt(msg.previousPaxos.size());
-            for (PaxosState p : msg.previousPaxos)
-                PaxosState.serializer.serialize(p, out);
         }
 
         @Override
         public CurrentStateMessage deserialize(ByteBuf in) throws IOException {
-            int nextInstance = in.readInt();
-            int size = in.readInt();
+            int instance = in.readInt();
+            int dataSize = in.readInt();
+            byte[] state = new byte[dataSize];
+            in.readBytes(state);
+
+            int membershipSize = in.readInt();
             List<Host> membership = new LinkedList<>();
-            for(int i = 0; i < size; i++)
+
+            for(int i = 0; i < membershipSize; i++){
                 membership.add(Host.serializer.deserialize(in));
+            }
 
-            size = in.readInt();
-            List<PaxosState> previousPaxos = new LinkedList<>();
-            for(int i = 0; i < size; i++)
-                previousPaxos.add(PaxosState.serializer.deserialize(in));
-
-            return new CurrentStateMessage(membership, nextInstance, previousPaxos);
+            return new CurrentStateMessage(instance, state, membership);
         }
     };
-
 }

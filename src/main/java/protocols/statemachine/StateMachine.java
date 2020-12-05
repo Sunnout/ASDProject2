@@ -2,8 +2,14 @@ package protocols.statemachine;
 
 import io.netty.buffer.ByteBuf;
 import protocols.agreement.notifications.JoinedNotification;
+import protocols.agreement.requests.AddReplicaRequest;
+import protocols.app.requests.CurrentStateReply;
+import protocols.app.requests.CurrentStateRequest;
+import protocols.app.requests.InstallStateRequest;
 import protocols.statemachine.messages.CurrentStateMessage;
 import protocols.statemachine.messages.AddReplicaMessage;
+import protocols.statemachine.requests.RemoveReplicaRequest;
+import protocols.statemachine.utils.OperationAndId;
 import protocols.statemachine.utils.PaxosState;
 import protocols.app.utils.Operation;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
@@ -57,13 +63,11 @@ public class StateMachine extends GenericProtocol {
 
     // Estado atual
     private List<Host> membership;
+    private Map<Integer, List<Host>> toSendState;
     private int nextInstance;
     private Map<Integer, PaxosState> previousPaxos;
 
-    private List<Operation> pendingOps;
-
-
-
+    private List<OperationAndId> pendingOps;
 
     // ter uma mapeamento de operações para instancias de paxos (em que criamos uma classe que guarda
     // o estado do paxos - memberhsip, highest prepare, etc..)
@@ -80,6 +84,7 @@ public class StateMachine extends GenericProtocol {
         nextInstance = 0;
         previousPaxos = new HashMap<>();
         pendingOps = new LinkedList<>();
+        toSendState = new HashMap<>();
 
         String address = props.getProperty("address");
         String port = props.getProperty("p2p_port");
@@ -108,6 +113,9 @@ public class StateMachine extends GenericProtocol {
 
         /*--------------------- Register Request Handlers ----------------------------- */
         registerRequestHandler(OrderRequest.REQUEST_ID, this::uponOrderRequest);
+
+        /*--------------------- Register Reply Handlers ----------------------------- */
+        registerReplyHandler(CurrentStateReply.REQUEST_ID, this::uponCurrentStateReply);
 
         /*--------------------- Register Message Handlers ----------------------------- */
         registerMessageHandler(channelId, AddReplicaMessage.MSG_ID, this::uponAddReplicaMsg, this::uponMsgFail);
@@ -156,10 +164,11 @@ public class StateMachine extends GenericProtocol {
     }
 
     /*--------------------------------- Requests ---------------------------------------- */
-    private void uponOrderRequest(OrderRequest request, short sourceProto) {
+    private void uponOrderRequest(OrderRequest request, short sourceProto) throws IOException {
         logger.debug("Received request: " + request);
         if (state == State.JOINING) {
-            //Do something smart (like buffering the requests)
+            pendingOps.add(new OperationAndId(Operation.fromByteArray(request.getOperation()), request.getOpId()));
+
         } else if (state == State.ACTIVE) {
             //Also do something starter, we don't want an infinite number of instances active
         	//Maybe you should modify what is it that you are proposing so that you remember that this
@@ -169,39 +178,71 @@ public class StateMachine extends GenericProtocol {
         }
     }
 
+    /*--------------------------------- Replies ---------------------------------------- */
+    private void uponCurrentStateReply(CurrentStateReply reply, short sourceProto){
+        int instance = reply.getInstance();
+        Iterator<Host> it = toSendState.get(instance).iterator();
+
+        while(it.hasNext()){
+            Host h = it.next();
+            sendMessage(new CurrentStateMessage(instance, reply.getState(), membership), h);
+            it.remove();
+        }
+    }
+
     /*--------------------------------- Notifications ---------------------------------------- */
     private void uponDecidedNotification(DecidedNotification notification, short sourceProto) throws IOException {
         logger.debug("Received notification: " + notification);
-
         Operation op = Operation.fromByteArray(notification.getOperation());
+
         if(notification.getInstance() == nextInstance) {
-            if(pendingOps.get(0).equals(notification.getOperation()))
+            if(pendingOps.get(0).equals(op))
                 pendingOps.remove(0);
+
             if(op.getOpType() != MEMBERSHIP_OP_TYPE)
                 triggerNotification(new ExecuteNotification(notification.getOpId(), notification.getOperation()));
+
             else {
                 String[] hostElements = op.getData().toString().split(":");
                 Host h = new Host(InetAddress.getByName(hostElements[0]), Integer.parseInt(hostElements[1]));
+
                 if (op.getKey().equals(ADD_REPLICA)) {
-                    if(membership.add(h)) {
+                    toSendState.get(nextInstance).add(h);
+
+                    if(!membership.contains(h)) {
+                        membership.add(h);
                         openConnection(h);
-                        //TODO: avisar paxos
-                        // mandar estado ao gajo caso sejas o contacto
-                        //sendMessage(new CurrentStateMessage(this.membership, this.nextInstance, this.previousPaxos), host);
+
+                        //TODO sourceProto??
+                        if(toSendState.containsValue(h))
+                            sendRequest(new CurrentStateRequest(nextInstance), sourceProto);
+
+                        //Avisar Paxos
+                        //TODO como garantir que não começa instância de paxos antes de haver estado instalado?
+                        sendRequest(new AddReplicaRequest(nextInstance, h), sourceProto);
                     }
-                }
-                else {
-                    if(membership.remove(h)) {
+
+                } else {
+                    if(membership.contains(h)) {
+                        membership.remove(h);
                         closeConnection(h);
-                        //TODO: avisar paxos
+                        sendRequest(new RemoveReplicaRequest(nextInstance, h), sourceProto);
                     }
                 }
             }
+
             nextInstance++;
+
+            PaxosState state;
+            while(previousPaxos.containsKey(nextInstance)){
+                state = previousPaxos.get(nextInstance++);
+                triggerNotification(new ExecuteNotification(state.getOpId(), state.getDecision().toByteArray()));
+            }
         }
+
         previousPaxos.put(notification.getInstance(),
-                new PaxosState(Operation.fromByteArray(notification.getOperation())));
-        //TODO: garatinr que outras ops são executadas
+                new PaxosState(op, notification.getOpId()));
+        //TODO: garantir que outras ops são executadas
     }
 
     /*--------------------------------- Messages ---------------------------------------- */
@@ -215,13 +256,14 @@ public class StateMachine extends GenericProtocol {
 
         // TODO: passamos host em bytes
         Operation op = new Operation(MEMBERSHIP_OP_TYPE, ADD_REPLICA, host.toString().getBytes());
-        pendingOps.add(op);
+        pendingOps.add(new OperationAndId(op, UUID.randomUUID()));
     }
 
     private void uponCurrentStateMsg(CurrentStateMessage msg, Host host, short sourceProto, int channelId) {
-        this.membership = msg.getMembership();
-        this.nextInstance = msg.getNextInstance();
-        this.previousPaxos = msg.getPreviousPaxos();
+        sendRequest(new InstallStateRequest(msg.getState()), sourceProto);
+        nextInstance = msg.getInstance();
+        state = State.ACTIVE;
+        //TODO: enviar mensagem para ver se se passou mais alguma coisa entretanto?
     }
 
     /* --------------------------------- TCPChannel Events ---------------------------- */
@@ -244,6 +286,7 @@ public class StateMachine extends GenericProtocol {
     }
 
     private void uponInConnectionUp(InConnectionUp event, int channelId) {
+        //TODO: Precisar abrir conexão ao contrário?
         logger.trace("Connection from {} is up", event.getNode());
     }
 
