@@ -3,6 +3,7 @@ package protocols.agreement;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import protocols.agreement.messages.BroadcastMessage;
+import protocols.agreement.messages.PrepareMessage;
 import protocols.agreement.notifications.DecidedNotification;
 import protocols.agreement.notifications.JoinedNotification;
 import protocols.agreement.requests.AddReplicaRequest;
@@ -25,7 +26,7 @@ public class PaxosAgreement extends GenericProtocol {
     private static final Logger logger = LogManager.getLogger(PaxosAgreement.class);
 
     //Protocol information, to register in babel
-    public final static short PROTOCOL_ID = 200;
+    public final static short PROTOCOL_ID = 400;
     public final static String PROTOCOL_NAME = "PaxosAgreement";
 
     private Host myself;
@@ -36,6 +37,7 @@ public class PaxosAgreement extends GenericProtocol {
     private Operation highestAcceptedValue;
     private Operation decision;
     private int numberAcceptsOK;
+    private int sn;
 
 
     public PaxosAgreement(Properties props) throws IOException, HandlerRegistrationException {
@@ -99,9 +101,15 @@ public class PaxosAgreement extends GenericProtocol {
 
     private void uponProposeRequest(ProposeRequest request, short sourceProto) {
         logger.debug("Received " + request);
-        BroadcastMessage msg = new BroadcastMessage(request.getInstance(), request.getOpId(), request.getOperation());
-        logger.debug("Sending to: " + membership);
-        membership.forEach(h -> sendMessage(msg, h));
+
+        while(true){
+            //TODO choose sequence Number
+            sn = 0;
+            membership.forEach(h -> sendMessage(new PrepareMessage(sn), h));
+            logger.debug("Sending to: " + membership);
+
+        }
+
     }
     private void uponAddReplica(AddReplicaRequest request, short sourceProto) {
         logger.debug("Received " + request);
