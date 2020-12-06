@@ -9,6 +9,7 @@ import protocols.agreement.notifications.JoinedNotification;
 import protocols.agreement.requests.AddReplicaRequest;
 import protocols.agreement.requests.ProposeRequest;
 import protocols.agreement.requests.RemoveReplicaRequest;
+import protocols.agreement.timers.PrepareOkTimer;
 import protocols.app.utils.Operation;
 import protocols.statemachine.notifications.ChannelReadyNotification;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
@@ -45,14 +46,14 @@ public class PaxosAgreement extends GenericProtocol {
         joinedInstance = -1; //-1 means we have not yet joined the system
         membership = null;
         highestPrepare = 0;
-        
 
         /*--------------------- Register Timer Handlers ----------------------------- */
+        registerTimerHandler(PrepareOkTimer.TIMER_ID, this::uponPrepareOkTimer);
 
         /*--------------------- Register Request Handlers ----------------------------- */
         registerRequestHandler(ProposeRequest.REQUEST_ID, this::uponProposeRequest);
-        registerRequestHandler(AddReplicaRequest.REQUEST_ID, this::uponAddReplica);
-        registerRequestHandler(RemoveReplicaRequest.REQUEST_ID, this::uponRemoveReplica);
+        registerRequestHandler(AddReplicaRequest.REQUEST_ID, this::uponAddReplicaRequest);
+        registerRequestHandler(RemoveReplicaRequest.REQUEST_ID, this::uponRemoveReplicaRequest);
 
         /*--------------------- Register Notification Handlers ----------------------------- */
         subscribeNotification(ChannelReadyNotification.NOTIFICATION_ID, this::uponChannelCreated);
@@ -82,6 +83,9 @@ public class PaxosAgreement extends GenericProtocol {
 
     }
 
+
+    /*--------------------------------- Messages ---------------------------------------- */
+
     private void uponBroadcastMessage(BroadcastMessage msg, Host host, short sourceProto, int channelId) {
         if(joinedInstance >= 0 ){
             //Obviously your agreement protocols will not decide things as soon as you receive the first message
@@ -92,12 +96,23 @@ public class PaxosAgreement extends GenericProtocol {
         }
     }
 
+    private void uponMsgFail(ProtoMessage msg, Host host, short destProto, Throwable throwable, int channelId) {
+        //If a message fails to be sent, for whatever reason, log the message and the reason
+        logger.error("Message {} to {} failed, reason: {}", msg, host, throwable);
+    }
+
+
+    /*--------------------------------- Notifications ------------------------------------ */
+
     private void uponJoinedNotification(JoinedNotification notification, short sourceProto) {
         //We joined the system and can now start doing things
         joinedInstance = notification.getJoinInstance();
         membership = new LinkedList<>(notification.getMembership());
         logger.info("Agreement starting at instance {},  membership: {}", joinedInstance, membership);
     }
+
+
+    /*--------------------------------- Requests ---------------------------------------- */
 
     private void uponProposeRequest(ProposeRequest request, short sourceProto) {
         logger.debug("Received " + request);
@@ -107,26 +122,30 @@ public class PaxosAgreement extends GenericProtocol {
             sn = 0;
             membership.forEach(h -> sendMessage(new PrepareMessage(sn), h));
             logger.debug("Sending to: " + membership);
-
+            setupTimer(new PrepareOkTimer(), 5000);
         }
 
     }
-    private void uponAddReplica(AddReplicaRequest request, short sourceProto) {
+
+    private void uponAddReplicaRequest(AddReplicaRequest request, short sourceProto) {
         logger.debug("Received " + request);
         //The AddReplicaRequest contains an "instance" field, which we ignore in this incorrect protocol.
         //You should probably take it into account while doing whatever you do here.
         membership.add(request.getReplica());
     }
-    private void uponRemoveReplica(RemoveReplicaRequest request, short sourceProto) {
+
+    private void uponRemoveReplicaRequest(RemoveReplicaRequest request, short sourceProto) {
         logger.debug("Received " + request);
         //The RemoveReplicaRequest contains an "instance" field, which we ignore in this incorrect protocol.
         //You should probably take it into account while doing whatever you do here.
         membership.remove(request.getReplica());
     }
 
-    private void uponMsgFail(ProtoMessage msg, Host host, short destProto, Throwable throwable, int channelId) {
-        //If a message fails to be sent, for whatever reason, log the message and the reason
-        logger.error("Message {} to {} failed, reason: {}", msg, host, throwable);
+
+    /*--------------------------------- Timers ---------------------------------------- */
+
+    private void uponPrepareOkTimer(PrepareOkTimer prepareOkTimer, long timerId) {
+
     }
 
 }
