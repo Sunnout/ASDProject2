@@ -96,23 +96,123 @@ public class PaxosAgreement extends GenericProtocol {
         // Allows this protocol to receive events from this channel.
         registerSharedChannel(cId);
         /*---------------------- Register Message Serializers ---------------------- */
+        registerMessageSerializer(cId, PrepareMessage.MSG_ID, PrepareMessage.serializer);
         registerMessageSerializer(cId, PrepareOkMessage.MSG_ID, PrepareOkMessage.serializer);
+        registerMessageSerializer(cId, AcceptMessage.MSG_ID, AcceptMessage.serializer);
         registerMessageSerializer(cId, AcceptOkMessage.MSG_ID, AcceptOkMessage.serializer);
 
         /*---------------------- Register Message Handlers -------------------------- */
         try {
+            registerMessageHandler(cId, PrepareMessage.MSG_ID, this::uponPrepareMessage, this::uponMsgFail);
             registerMessageHandler(cId, PrepareOkMessage.MSG_ID, this::uponPrepareOkMessage, this::uponMsgFail);
+            registerMessageHandler(cId, AcceptMessage.MSG_ID, this::uponAcceptMessage, this::uponMsgFail);
             registerMessageHandler(cId, AcceptOkMessage.MSG_ID, this::uponAcceptOkMessage, this::uponMsgFail);
 
         } catch (HandlerRegistrationException e) {
             throw new AssertionError("Error registering message handler.", e);
         }
-
     }
 
 
     /*--------------------------------- Messages ---------------------------------------- */
 
+    private void uponPrepareMessage(PrepareMessage msg, Host host, short sourceProto, int channelId) {
+        int msgSN = msg.getSn();
+        int msgInstance = msg.getInstance();
+
+        try {
+            //TODO CONFUSION!
+            if (msgSN > highestPrepare.get(msgInstance)) {
+                highestPrepare.put(msgInstance, msgSN);
+                int snToSend = -1;
+
+                if(highestAccept.containsKey(msgInstance))
+                    snToSend = highestAccept.get(msgInstance);
+
+                OperationAndId operationToSend = highestAcceptedValue.get(msgInstance);
+                UUID opId = null;
+                byte[] op = null;
+
+                if (operationToSend != null) {
+                    opId = operationToSend.getOpId();
+                    op = operationToSend.getOperation().toByteArray();
+                }
+
+                sendMessage(new PrepareOkMessage(msgInstance, opId, op, snToSend), host);
+            }
+        }
+
+        catch(Exception e){
+            e.printStackTrace();
+        }
+    }
+
+    private void uponPrepareOkMessage(PrepareOkMessage msg, Host host, short sourceProto, int channelId) {
+        try {
+            if (joinedInstance >= 0) {
+                int instance = msg.getInstance();
+                int msgPrepare = msg.getHighestPrepare();
+                // initialize the highest Prepare
+
+                if(msgPrepare != -1) {
+                    highestPreparedValue.put(instance, new OperationAndId(Operation.fromByteArray(msg.getOp()), msg.getOpId()));
+                }
+
+                if(!prepareOkCounters.containsKey(instance))
+                    prepareOkCounters.put(instance, 1);
+
+                else {
+                    prepareOkCounters.put(instance, prepareOkCounters.get(instance) + 1);
+                }
+
+
+
+
+
+
+// -------------------------------------------------------------------------------------------------------------------------
+
+                if (!highestPrepare.containsKey(instance))
+                    highestPrepare.put(instance, -1);
+
+                // Verificação de nulls
+
+                // Update value and reset counter if the seqnumb is higher
+                // TODO Alguma vez acontece?
+                if (msg.getHighestPrepare() > highestPrepare.get(instance)) {
+
+                }
+
+                //Increment counter if seqnumb is the same
+                else if(msg.getHighestPrepare() == highestPrepare.get(instance)) {
+                    prepareOkCounters.put(instance, prepareOkCounters.get(instance) + 1);
+                }
+
+                //If majority quorum was achieved send Accept messages
+                if (prepareOkCounters.get(instance) > (membership.size() / 2 + 1)) {
+                    cancelTimer(timersByInstance.get(instance)[PREPARE_INDEX]);
+                    OperationAndId opnId = highestPreparedValue.get(instance);
+                    for (Host h : membership)
+                        sendMessage(new AcceptMessage(instance, opnId.getOpId(), opnId.getOperation().toByteArray(), sn), h);
+
+                    //intializing timer that expires when a quorum of acceptOk is not achieved
+                    timersByInstance.get(instance)[ACCEPT_INDEX] = setupTimer(new AcceptOkTimer(instance), 5000);
+                }
+
+            } else {
+                //TODO
+                //We have not yet received a JoinedNotification, but we are already receiving messages from the other
+                //agreement instances, maybe we should do something with them...?
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    private void uponAcceptMessage(AcceptMessage msg, Host host, short sourceProto, int channelId) {
+       int msgSN = msg.getSn();
+    }
 
     private void uponAcceptOkMessage(AcceptOkMessage msg, Host host, short sourceProto, int channelId) {
         try {
@@ -162,47 +262,6 @@ public class PaxosAgreement extends GenericProtocol {
         } catch (Exception e) {
             e.printStackTrace();
         }
-    }
-
-    private void uponPrepareOkMessage(PrepareOkMessage msg, Host host, short sourceProto, int channelId) {
-        try {
-            if (joinedInstance >= 0) {
-                int instance = msg.getInstance();
-                // initialize the highest Prepare
-                if (!highestPrepare.containsKey(instance))
-                    highestPrepare.put(instance, -1);
-
-                // Update value and reset counter if the seqnumb is higher
-                if (msg.getHighestPrepare() > highestPrepare.get(instance)) {
-                    prepareOkCounters.put(instance, 1);
-                    highestPrepare.put(instance, msg.getHighestPrepare());
-                    highestPreparedValue.put(instance, new OperationAndId(Operation.fromByteArray(msg.getOp()), msg.getOpId()));
-                }
-                //Increment counter if seqnumb is the same
-                else if(msg.getHighestPrepare() == highestPrepare.get(instance)) {
-                    prepareOkCounters.put(instance, prepareOkCounters.get(instance) + 1);
-                }
-
-                //If majority quorum was achieved send Accept messages
-                if (prepareOkCounters.get(instance) > (membership.size() / 2 + 1)) {
-                    cancelTimer(timersByInstance.get(instance)[PREPARE_INDEX]);
-                    OperationAndId opnId = highestPreparedValue.get(instance);
-                    for (Host h : membership)
-                        sendMessage(new AcceptMessage(instance, opnId.getOpId(), opnId.getOperation().toByteArray(), sn), h);
-
-                    //intializing timer that expires when a quorum of acceptOk is not achieved
-                    timersByInstance.get(instance)[ACCEPT_INDEX] = setupTimer(new AcceptOkTimer(instance), 5000);
-                }
-
-            } else {
-                //TODO
-                //We have not yet received a JoinedNotification, but we are already receiving messages from the other
-                //agreement instances, maybe we should do something with them...?
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-
     }
 
     private void uponMsgFail(ProtoMessage msg, Host host, short destProto, Throwable throwable, int channelId) {
@@ -267,14 +326,12 @@ public class PaxosAgreement extends GenericProtocol {
 
     private void uponPrepareOkTimer(PrepareOkTimer prepareOkTimer, long timerId) {
         logger.debug("Timeout of timer PrepareOkTimer");
-        // increase sn by N
+        int instance = prepareOkTimer.getInstance();
         sn = sn + membership.size();
+        highestPrepare.put(instance, sn);
         //TODO Fix currentInstance
-        membership.forEach(h -> sendMessage(new PrepareMessage(sn,prepareOkTimer.getInstance()), h));
+        membership.forEach(h -> sendMessage(new PrepareMessage(sn, instance), h));
         logger.debug("Sending to: " + membership);
-
-
-
     }
 
     private void uponAcceptOkTimer(AcceptOkTimer acceptOkTimer, long timerId) {
