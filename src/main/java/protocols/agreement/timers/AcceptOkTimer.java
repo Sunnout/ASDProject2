@@ -4,9 +4,15 @@ import pt.unl.fct.di.novasys.babel.generic.ProtoTimer;
 public class AcceptOkTimer extends ProtoTimer {
 
     public static final short TIMER_ID = 400;
+    private final int instance;
 
-    public AcceptOkTimer() {
+    public AcceptOkTimer(int instance) {
         super(TIMER_ID);
+        this.instance = instance;
+    }
+
+    public int getInstance() {
+        return instance;
     }
 
     @Override

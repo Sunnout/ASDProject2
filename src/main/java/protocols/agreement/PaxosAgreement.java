@@ -12,6 +12,7 @@ import protocols.agreement.timers.AcceptOkTimer;
 import protocols.agreement.timers.PrepareOkTimer;
 import protocols.app.utils.Operation;
 import protocols.statemachine.notifications.ChannelReadyNotification;
+import protocols.statemachine.notifications.ExecuteNotification;
 import protocols.statemachine.utils.OperationAndId;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
 import pt.unl.fct.di.novasys.babel.exceptions.HandlerRegistrationException;
@@ -34,15 +35,25 @@ public class PaxosAgreement extends GenericProtocol {
     private Host myself;
     private int joinedInstance;
     private List<Host> membership;
-    private Map<Integer,Integer> highestPrepare;
+    //Map of highest prepare sequence number by instance
+    private Map<Integer, Integer> highestPrepare;
+    //Map of OperationAndId by instance, to store the highest prepared value
     private Map<Integer, OperationAndId> highestPreparedValue;
-    private Map<Integer,Integer> highestAccept;
-    private Map<Integer,Integer> prepareOkCounters;
+    //Map of highest accept sequence number by instance
+    private Map<Integer, Integer> highestAccept;
+    // Map of number of prepareOk by instance
+    private Map<Integer, Integer> prepareOkCounters;
+    //Map of highest accepted value by instance
     private Map<Integer, OperationAndId> highestAcceptedValue;
-    private byte[] decision;
-    private Map<Integer,Integer> acceptOKCounters;
+    //Map of decide values by instance
+    private Map<Integer, OperationAndId> toDecide;
+    //Map of numbers of accept ok by instance
+    private Map<Integer, Integer> acceptOKCounters;
+    //Our sequence number
     private int sn;
+    //Current instance running
     private int currentInstance;
+    //Map that stores an array of timerIds by instance , [0] = prepareOkTimer , [1] = acceptOkTimer
     private Map<Integer, Long[]> timersByInstance;
 
     public PaxosAgreement(Properties props) throws IOException, HandlerRegistrationException {
@@ -55,9 +66,12 @@ public class PaxosAgreement extends GenericProtocol {
         highestAccept = new HashMap<>();
         acceptOKCounters = new HashMap<>();
         prepareOkCounters = new HashMap<>();
+        currentInstance = 0;
 
         /*--------------------- Register Timer Handlers ----------------------------- */
         registerTimerHandler(PrepareOkTimer.TIMER_ID, this::uponPrepareOkTimer);
+        registerTimerHandler(AcceptOkTimer.TIMER_ID, this::uponAcceptOkTimer);
+
 
         /*--------------------- Register Request Handlers ----------------------------- */
         registerRequestHandler(ProposeRequest.REQUEST_ID, this::uponProposeRequest);
@@ -87,8 +101,8 @@ public class PaxosAgreement extends GenericProtocol {
 
         /*---------------------- Register Message Handlers -------------------------- */
         try {
-              registerMessageHandler(cId, PrepareOkMessage.MSG_ID, this::uponPrepareOkMessage, this::uponMsgFail);
-              registerMessageHandler(cId, AcceptOkMessage.MSG_ID, this::uponAcceptOkMessage, this::uponMsgFail);
+            registerMessageHandler(cId, PrepareOkMessage.MSG_ID, this::uponPrepareOkMessage, this::uponMsgFail);
+            registerMessageHandler(cId, AcceptOkMessage.MSG_ID, this::uponAcceptOkMessage, this::uponMsgFail);
 
         } catch (HandlerRegistrationException e) {
             throw new AssertionError("Error registering message handler.", e);
@@ -104,56 +118,80 @@ public class PaxosAgreement extends GenericProtocol {
         try {
             if (joinedInstance >= 0) {
                 int instance = msg.getInstance();
+                // initialize the highest Accept
                 if (!highestAccept.containsKey(instance))
                     highestAccept.put(instance, -1);
 
+                // Update value and reset counter if the seqnumb is higher
                 if (msg.getHighestAccept() > highestAccept.get(instance)) {
                     acceptOKCounters.put(instance, 1);
                     highestAccept.put(instance, msg.getHighestAccept());
-                    highestAcceptedValue.put(instance, new OperationAndId( Operation.fromByteArray(msg.getOp()),msg.getOpId()));
-                } else {
+                    highestAcceptedValue.put(instance, new OperationAndId(Operation.fromByteArray(msg.getOp()), msg.getOpId()));
+                }
+                //Increment counter if seqnumb is the same
+                else if(msg.getHighestAccept() == highestAccept.get(instance)) {
                     acceptOKCounters.put(instance, acceptOKCounters.get(instance) + 1);
                 }
 
+                //If majority quorum was achieved
                 if (acceptOKCounters.get(instance) > (membership.size() / 2 + 1)) {
+                    cancelTimer(timersByInstance.get(instance)[ACCEPT_INDEX]);
                     OperationAndId opnId = highestAcceptedValue.get(instance);
-                    triggerNotification(new DecidedNotification(instance,opnId.getOpId() ,opnId.getOperation().toByteArray()));
+                    //If the quorum is for the current instance then decide
+                    if(currentInstance == instance) {
+                        currentInstance++;
+                        triggerNotification(new DecidedNotification(instance, opnId.getOpId(), opnId.getOperation().toByteArray()));
+                        // Execute all pending decisions, if there are any
+                        while (toDecide.containsKey(currentInstance)) {
+                            opnId = toDecide.get(currentInstance);
+                            triggerNotification(new DecidedNotification(currentInstance++, opnId.getOpId(), opnId.getOperation().toByteArray()));
+                        }
+                    }
+                    //Else save decision for later
+                    else{
+                        toDecide.put(instance,opnId);
+                    }
                 }
 
-            } else {
+            }
+            else {
                 //TODO
                 //We have not yet received a JoinedNotification, but we are already receiving messages from the other
                 //agreement instances, maybe we should do something with them...?
             }
-        }
-        catch (Exception e){
+        } catch (Exception e) {
             e.printStackTrace();
         }
-        }
+    }
 
-        private void uponPrepareOkMessage(PrepareOkMessage msg, Host host, short sourceProto, int channelId) {
+    private void uponPrepareOkMessage(PrepareOkMessage msg, Host host, short sourceProto, int channelId) {
         try {
             if (joinedInstance >= 0) {
                 int instance = msg.getInstance();
+                // initialize the highest Prepare
                 if (!highestPrepare.containsKey(instance))
                     highestPrepare.put(instance, -1);
 
+                // Update value and reset counter if the seqnumb is higher
                 if (msg.getHighestPrepare() > highestPrepare.get(instance)) {
                     prepareOkCounters.put(instance, 1);
                     highestPrepare.put(instance, msg.getHighestPrepare());
                     highestPreparedValue.put(instance, new OperationAndId(Operation.fromByteArray(msg.getOp()), msg.getOpId()));
-                } else {
+                }
+                //Increment counter if seqnumb is the same
+                else if(msg.getHighestPrepare() == highestPrepare.get(instance)) {
                     prepareOkCounters.put(instance, prepareOkCounters.get(instance) + 1);
-
                 }
 
+                //If majority quorum was achieved send Accept messages
                 if (prepareOkCounters.get(instance) > (membership.size() / 2 + 1)) {
                     cancelTimer(timersByInstance.get(instance)[PREPARE_INDEX]);
                     OperationAndId opnId = highestPreparedValue.get(instance);
-                    for(Host h: membership)
-                        sendMessage(new AcceptMessage(instance,opnId.getOpId(),opnId.getOperation().toByteArray(),sn), h);
+                    for (Host h : membership)
+                        sendMessage(new AcceptMessage(instance, opnId.getOpId(), opnId.getOperation().toByteArray(), sn), h);
 
-                    timersByInstance.get(instance)[ACCEPT_INDEX] = setupTimer(new AcceptOkTimer(), 5000);
+                    //intializing timer that expires when a quorum of acceptOk is not achieved
+                    timersByInstance.get(instance)[ACCEPT_INDEX] = setupTimer(new AcceptOkTimer(instance), 5000);
                 }
 
             } else {
@@ -161,8 +199,7 @@ public class PaxosAgreement extends GenericProtocol {
                 //We have not yet received a JoinedNotification, but we are already receiving messages from the other
                 //agreement instances, maybe we should do something with them...?
             }
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             e.printStackTrace();
         }
 
@@ -179,7 +216,9 @@ public class PaxosAgreement extends GenericProtocol {
     private void uponJoinedNotification(JoinedNotification notification, short sourceProto) {
         //We joined the system and can now start doing things
         joinedInstance = notification.getJoinInstance();
+        currentInstance = joinedInstance;
         membership = new LinkedList<>(notification.getMembership());
+        //TODO ver se current instance and joined instance sao os dois necessarios
         logger.info("Agreement starting at instance {},  membership: {}", joinedInstance, membership);
     }
 
@@ -187,20 +226,26 @@ public class PaxosAgreement extends GenericProtocol {
     /*--------------------------------- Requests ---------------------------------------- */
 
     private void uponProposeRequest(ProposeRequest request, short sourceProto) {
-        logger.debug("Received " + request);
+        try {
+            logger.debug("Received " + request);
 
-        while(true){
             //TODO choose sequence Number
             sn = 0;
             int instance = request.getInstance();
-            membership.forEach(h -> sendMessage(new PrepareMessage(sn,instance), h));
+            membership.forEach(h -> sendMessage(new PrepareMessage(sn, instance), h));
             logger.debug("Sending to: " + membership);
-            if(timersByInstance.containsKey(instance))
+            //Saved proposed Value and corresponding seqnumb
+            highestPrepare.put(instance, sn);
+            highestPreparedValue.put(instance, new OperationAndId(Operation.fromByteArray(request.getOperation()), request.getOpId()));
+            //intializing timer that expires when a quorum of prepareOk is not achieved
+            if (!timersByInstance.containsKey(instance))
                 timersByInstance.put(instance, new Long[2]);
 
-            timersByInstance.get(instance)[PREPARE_INDEX] = setupTimer(new PrepareOkTimer(), 5000);
+            timersByInstance.get(instance)[PREPARE_INDEX] = setupTimer(new PrepareOkTimer(instance), 5000);
         }
-
+        catch (Exception e){
+            e.printStackTrace();
+        }
     }
 
     private void uponAddReplicaRequest(AddReplicaRequest request, short sourceProto) {
@@ -221,7 +266,27 @@ public class PaxosAgreement extends GenericProtocol {
     /*--------------------------------- Timers ---------------------------------------- */
 
     private void uponPrepareOkTimer(PrepareOkTimer prepareOkTimer, long timerId) {
+        logger.debug("Timeout of timer PrepareOkTimer");
+        // increase sn by N
+        sn = sn + membership.size();
+        //TODO Fix currentInstance
+        membership.forEach(h -> sendMessage(new PrepareMessage(sn,prepareOkTimer.getInstance()), h));
+        logger.debug("Sending to: " + membership);
+
+
 
     }
 
+    private void uponAcceptOkTimer(AcceptOkTimer acceptOkTimer, long timerId) {
+        logger.debug("Timeout of timer acceptOkTimer");
+        sn = sn + membership.size();
+        membership.forEach(h -> sendMessage(new PrepareMessage(sn,acceptOkTimer.getInstance()), h));
+        logger.debug("Sending to: " + membership);
+
+    }
+    /*--------------------------------- Auxiliar Methods ---------------------------------------- */
+
+    private void sendProposes(int sn, int instance){
+
+    }
 }

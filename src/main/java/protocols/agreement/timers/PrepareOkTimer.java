@@ -5,8 +5,15 @@ public class PrepareOkTimer extends ProtoTimer {
 
     public static final short TIMER_ID = 400;
 
-    public PrepareOkTimer() {
+    private final int instance;
+
+    public PrepareOkTimer(int instance) {
         super(TIMER_ID);
+        this.instance = instance;
+    }
+
+    public int getInstance() {
+        return instance;
     }
 
     @Override

@@ -292,6 +292,7 @@ public class StateMachine extends GenericProtocol {
     }
 
     private void uponOutConnectionFailed(OutConnectionFailed<ProtoMessage> event, int channelId) {
+        //TODO remove replica after X tries
         logger.debug("Connection to {} failed, cause: {}", event.getNode(), event.getCause());
         //Maybe we don't want to do this forever. At some point we assume he is no longer there.
         //Also, maybe wait a little bit before retrying, or else you'll be trying 1000s of times per second
