@@ -3,15 +3,18 @@ package protocols.agreement.utils;
 import protocols.statemachine.utils.OperationAndId;
 import pt.unl.fct.di.novasys.network.data.Host;
 
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
 
 public class PaxosState {
 
-    private List<Host> membership;
+    private int sn; // Current sequence number
+    private List<Host> membership; // Membership for this instance
+    private OperationAndId initialProposal; // Initial proposed value
 
     private int highestPrepare; // Highest prepared seqNumber
-    private OperationAndId highestPreparedValue; // Highest prepared value
+    private int highestPrepareOk; // Highest prepareOk seqNumber
     private int prepareOkCounter; /// Number of prepareOks for the same seqNumber
 
     private int highestAccept; // Highest accepted seqNumber
@@ -25,10 +28,12 @@ public class PaxosState {
     private long prepareOkTimer; // Id of prepareOkTimer
     private long acceptOkTimer; // Id of acceptOkTimer
 
-    public PaxosState(List<Host> membership) {
-        this.membership = membership;
+    public PaxosState() {
+        this.sn = -1;
+        this.membership = new LinkedList<>();
+        this.initialProposal = null;
         this.highestPrepare = -1;
-        this.highestPreparedValue = null;
+        this.highestPrepareOk = -1;
         this.prepareOkCounter = 0;
         this.highestAccept = -1;
         this.highestAcceptedValue = null;
@@ -39,18 +44,17 @@ public class PaxosState {
         this.acceptOkTimer = -1;
     }
 
-    public PaxosState() {
-        this.membership = new LinkedList<>();
-        this.highestPrepare = -1;
-        this.highestPreparedValue = null;
-        this.prepareOkCounter = 0;
-        this.highestAccept = -1;
-        this.highestAcceptedValue = null;
-        this.acceptOkCounter = 0;
-        this.replicaToRemove = null;
-        this.toDecide = null;
-        this.prepareOkTimer = -1;
-        this.acceptOkTimer = -1;
+    public int getSn() {
+        return this.sn;
+    }
+
+    public void generateSn(Host myself) {
+        Collections.sort(membership, new HostComparator());
+        this.sn = membership.indexOf(myself);
+    }
+
+    public void increaseSn() {
+        this.sn += getMembershipSize();
     }
 
     public List<Host> getMembership() {
@@ -66,7 +70,7 @@ public class PaxosState {
     }
 
     public void addReplicaToMembership(Host replica) {
-        if(!this.replicaToRemove.equals(replica))
+        if(!replica.equals(this.replicaToRemove))
             this.membership.add(replica);
     }
 
@@ -83,12 +87,20 @@ public class PaxosState {
         this.highestPrepare = highestPrepare;
     }
 
-    public OperationAndId getHighestPreparedValue() {
-        return highestPreparedValue;
+    public int getHighestPrepareOk() {
+        return highestPrepareOk;
     }
 
-    public void setHighestPreparedValue(OperationAndId highestPreparedValue) {
-        this.highestPreparedValue = highestPreparedValue;
+    public void setHighestPrepareOk(int highestPrepareOk) {
+        this.highestPrepareOk = highestPrepareOk;
+    }
+
+    public OperationAndId getInitialProposal() {
+        return initialProposal;
+    }
+
+    public void setInitialProposal(OperationAndId initialProposal) {
+        this.initialProposal = initialProposal;
     }
 
     public int getPrepareOkCounter() {

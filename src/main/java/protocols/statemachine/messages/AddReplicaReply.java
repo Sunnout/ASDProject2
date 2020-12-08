@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.util.LinkedList;
 import java.util.List;
 
-public class CurrentStateMessage extends ProtoMessage {
+public class AddReplicaReply extends ProtoMessage {
 
     public static final short MSG_ID = 203;
 
@@ -17,7 +17,7 @@ public class CurrentStateMessage extends ProtoMessage {
     private byte[] state;
     private List<Host> membership;
 
-    public CurrentStateMessage(int instance, byte[] state, List<Host> membership) {
+    public AddReplicaReply(int instance, byte[] state, List<Host> membership) {
         super(MSG_ID);
         this.instance = instance;
         this.state = state;
@@ -44,9 +44,9 @@ public class CurrentStateMessage extends ProtoMessage {
                 '}';
     }
 
-    public static ISerializer<CurrentStateMessage> serializer = new ISerializer<CurrentStateMessage>() {
+    public static ISerializer<AddReplicaReply> serializer = new ISerializer<AddReplicaReply>() {
         @Override
-        public void serialize(CurrentStateMessage msg, ByteBuf out) throws IOException {
+        public void serialize(AddReplicaReply msg, ByteBuf out) throws IOException {
             out.writeInt(msg.instance);
             out.writeInt(msg.state.length);
             out.writeBytes(msg.state);
@@ -56,7 +56,7 @@ public class CurrentStateMessage extends ProtoMessage {
         }
 
         @Override
-        public CurrentStateMessage deserialize(ByteBuf in) throws IOException {
+        public AddReplicaReply deserialize(ByteBuf in) throws IOException {
             int instance = in.readInt();
             int dataSize = in.readInt();
             byte[] state = new byte[dataSize];
@@ -69,7 +69,7 @@ public class CurrentStateMessage extends ProtoMessage {
                 membership.add(Host.serializer.deserialize(in));
             }
 
-            return new CurrentStateMessage(instance, state, membership);
+            return new AddReplicaReply(instance, state, membership);
         }
     };
 }
