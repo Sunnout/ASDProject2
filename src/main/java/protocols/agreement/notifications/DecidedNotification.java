@@ -8,7 +8,7 @@ import pt.unl.fct.di.novasys.babel.generic.ProtoNotification;
 
 public class DecidedNotification extends ProtoNotification {
 
-    public static final short NOTIFICATION_ID = 101;
+    public static final short NOTIFICATION_ID = 401;
 
     private final int instance;
     private final UUID opId;

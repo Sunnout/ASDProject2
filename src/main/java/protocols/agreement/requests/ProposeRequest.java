@@ -7,7 +7,7 @@ import java.util.UUID;
 
 public class ProposeRequest extends ProtoRequest {
 
-    public static final short REQUEST_ID = 101;
+    public static final short REQUEST_ID = 401;
 
     private final int instance;
     private final UUID opId;

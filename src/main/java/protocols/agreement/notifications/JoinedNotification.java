@@ -7,7 +7,7 @@ import java.util.List;
 
 public class JoinedNotification extends ProtoNotification {
 
-    public static final short NOTIFICATION_ID = 102;
+    public static final short NOTIFICATION_ID = 402;
 
     private final List<Host> membership;
     private final int joinInstance;

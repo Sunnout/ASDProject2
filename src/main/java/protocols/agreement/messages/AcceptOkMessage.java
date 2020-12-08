@@ -1,6 +1,7 @@
 package protocols.agreement.messages;
 
 import io.netty.buffer.ByteBuf;
+import org.apache.commons.codec.binary.Hex;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
 import pt.unl.fct.di.novasys.network.ISerializer;
 
@@ -37,6 +38,16 @@ public class AcceptOkMessage extends ProtoMessage {
 
     public int getHighestAccept() {
         return highestAccept;
+    }
+
+    @Override
+    public String toString() {
+        return "AcceptOkMessage{" +
+                "opId=" + opId +
+                ", instance=" + instance +
+                ", op=" + Hex.encodeHexString(op) +
+                ", highestAccept=" + highestAccept +
+                '}';
     }
 
     public static ISerializer<AcceptOkMessage> serializer = new ISerializer<AcceptOkMessage>() {

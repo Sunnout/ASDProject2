@@ -1,6 +1,7 @@
 package protocols.agreement.messages;
 
 import io.netty.buffer.ByteBuf;
+import org.apache.commons.codec.binary.Hex;
 import protocols.app.utils.Operation;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
 import pt.unl.fct.di.novasys.network.ISerializer;
@@ -37,6 +38,16 @@ public class PrepareOkMessage  extends ProtoMessage {
 
     public int getHighestPrepare() {
         return highestPrepare;
+    }
+
+    @Override
+    public String toString() {
+        return "PrepareOkMessage{" +
+                "opId=" + opId +
+                ", instance=" + instance +
+                ", op=" + Hex.encodeHexString(op) +
+                ", highestPrepare=" + highestPrepare +
+                '}';
     }
 
     public static ISerializer<PrepareOkMessage> serializer = new ISerializer<PrepareOkMessage>() {

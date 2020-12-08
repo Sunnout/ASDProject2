@@ -1,6 +1,7 @@
 package protocols.agreement.messages;
 
 import io.netty.buffer.ByteBuf;
+import org.apache.commons.codec.binary.Hex;
 import pt.unl.fct.di.novasys.babel.generic.ProtoMessage;
 import pt.unl.fct.di.novasys.network.ISerializer;
 
@@ -22,6 +23,14 @@ public class PrepareMessage  extends ProtoMessage {
 
     public int getInstance() {
         return instance;
+    }
+
+    @Override
+    public String toString() {
+        return "PrepareMessage{" +
+                "sn=" + sn +
+                ", instance=" + instance +
+                '}';
     }
 
     public static ISerializer<PrepareMessage> serializer = new ISerializer<PrepareMessage>() {

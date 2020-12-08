@@ -5,7 +5,7 @@ import pt.unl.fct.di.novasys.network.data.Host;
 
 public class RemoveReplicaRequest extends ProtoRequest {
 
-    public static final short REQUEST_ID = 102;
+    public static final short REQUEST_ID = 402;
 
     private final int instance;
     private final Host replica;
