@@ -144,6 +144,7 @@ public class StateMachine extends GenericProtocol {
             membership = new LinkedList<>(initialMembership);
             membership.forEach(this::openConnection);
             triggerNotification(new JoinedNotification(membership, 0));
+
         } else {
             state = State.JOINING;
             logger.info("Starting in JOINING as I am not part of initial membership");
@@ -152,7 +153,6 @@ public class StateMachine extends GenericProtocol {
             Host toContact = membership.get(r.nextInt(initialMembership.size()));
             openConnection(toContact);
         }
-
     }
 
     /*--------------------------------- Requests ---------------------------------------- */
@@ -172,7 +172,6 @@ public class StateMachine extends GenericProtocol {
             e.printStackTrace();
         }
     }
-
 
     /*--------------------------------- Replies ---------------------------------------- */
 

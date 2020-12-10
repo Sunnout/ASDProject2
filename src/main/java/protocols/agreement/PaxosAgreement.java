@@ -8,8 +8,7 @@ import protocols.agreement.notifications.JoinedNotification;
 import protocols.agreement.requests.AddReplicaRequest;
 import protocols.agreement.requests.ProposeRequest;
 import protocols.agreement.requests.RemoveReplicaRequest;
-import protocols.agreement.timers.AcceptOkTimer;
-import protocols.agreement.timers.PrepareOkTimer;
+import protocols.agreement.timers.PaxosTimer;
 import protocols.agreement.utils.PaxosState;
 import protocols.app.utils.Operation;
 import protocols.statemachine.notifications.ChannelReadyNotification;
@@ -41,8 +40,7 @@ public class PaxosAgreement extends GenericProtocol {
         paxosByInstance = new HashMap<>();
 
         /*--------------------- Register Timer Handlers ----------------------------- */
-        registerTimerHandler(PrepareOkTimer.TIMER_ID, this::uponPrepareOkTimer);
-        registerTimerHandler(AcceptOkTimer.TIMER_ID, this::uponAcceptOkTimer);
+        registerTimerHandler(PaxosTimer.TIMER_ID, this::uponPaxosTimer);
 
         /*--------------------- Register Request Handlers ----------------------------- */
         registerRequestHandler(ProposeRequest.REQUEST_ID, this::uponProposeRequest);
@@ -89,29 +87,31 @@ public class PaxosAgreement extends GenericProtocol {
     /*--------------------------------- Messages ---------------------------------------- */
 
     private void uponPrepareMessage(PrepareMessage msg, Host host, short sourceProto, int channelId) {
-        //logger.debug("Entrei no Upon Prepare");
         try {
-            int msgSn = msg.getSn();
             int instance = msg.getInstance();
-            PaxosState ps = getPaxosInstance(instance);
 
-            // If seqNumber of prepare is higher than our highest prepare, send prepareOk
-            if (msgSn > ps.getHighestPrepare()) {
-                //logger.debug("Entrei no if");
-                ps.setHighestPrepare(msgSn);
+            if(currentInstance >= 0 && instance >= currentInstance){
+                int msgSn = msg.getSn();
+                PaxosState ps = getPaxosInstance(instance);
+                logger.debug("uponPrepareMessage: MsgSn: {}, MsgInstance: {}", msgSn, instance);
 
-                int highestAccepted = ps.getHighestAccept();
-                // If we have accepted something, send highest accepted seqNumber and value
-                if (highestAccepted != -1) {
-                    //logger.debug("Accepted something before");
-                    OperationAndId opToSend = ps.getHighestAcceptedValue();
-                    sendMessage(new PrepareOkMessage(instance, opToSend.getOpId(),
-                            opToSend.getOperation().toByteArray(), highestAccepted), host);
-                }
-                // If we have not accepted anything, send bottoms (nulls and -1)
-                else {
-                    //logger.debug("Nothing Accepted");
-                    sendMessage(new PrepareOkMessage(instance, null, null, -1), host);
+                // If seqNumber of prepare is higher than our highest prepare, send prepareOk
+                if (msgSn > ps.getHighestPrepare()) {
+                    ps.setHighestPrepare(msgSn);
+
+                    int highestAccepted = ps.getHighestAccept();
+                    // If we have accepted something, send highest accepted seqNumber and value
+                    if (highestAccepted != -1) {
+                        OperationAndId opToSend = ps.getHighestAcceptedValue();
+                        logger.debug("uponPrepareMessage: sending OpId: {}", opToSend.getOpId());
+                        sendMessage(new PrepareOkMessage(instance, opToSend.getOpId(),
+                                opToSend.getOperation().toByteArray(), highestAccepted), host);
+                    }
+                    // If we have not accepted anything, send bottoms (nulls and -1)
+                    else {
+                        logger.debug("uponPrepareMessage: sending bottoms");
+                        sendMessage(new PrepareOkMessage(instance, null, null, -1), host);
+                    }
                 }
             }
 
@@ -122,39 +122,35 @@ public class PaxosAgreement extends GenericProtocol {
 
     private void uponPrepareOkMessage(PrepareOkMessage msg, Host host, short sourceProto, int channelId) {
         try {
-            //logger.debug("Prepare OK Received");
+            int instance = msg.getInstance();
+            PaxosState ps = getPaxosInstance(instance);
 
-            if (currentInstance >= 0) {
-                //logger.debug("Current >= 0");
-
+            if (currentInstance >= 0 && instance >= currentInstance && !ps.havePrepareOkMajority()) {
                 int msgSn = msg.getHighestAccepted();
-                int instance = msg.getInstance();
-                PaxosState ps = getPaxosInstance(instance);
+
+                logger.debug("uponPrepareOkMessage: MsgSn: {}, MsgInstance: {}", msgSn, instance);
 
                 // If the prepareOk didn't return bottoms and the seqNumber is higher than the one
                 // we have, we replace the value with the new one
                 if (msgSn != -1) {
-                    //logger.debug("MSG != -1");
                     if (msgSn > ps.getHighestPrepareOk()) {
-                        //logger.debug("Reset");
                         // Reset counter because we changed seqNumber
+                        logger.debug("uponPrepareOkMessage: Old Sn: {}, New Sn: {}"
+                                , ps.getHighestPrepareOk(), msgSn);
+
                         ps.resetPrepareOkCounter();
                         ps.setHighestPrepareOk(msgSn);
-                        // TODO: mudei para accepted value
                         ps.setHighestAcceptedValue(new OperationAndId(Operation.fromByteArray(msg.getOp()),
                                 msg.getOpId()));
                     }
+
                     // Increment counter of prepareOks
                     ps.incrementPrepareOkCounter();
-                }
-                else {
-                    //logger.debug("MSG == -1");
-                    //logger.debug(ps.getHighestPrepareOk());
 
+                } else {
                     // If we have not received anything but bottoms
                     if (ps.getHighestPrepareOk() == -1) {
-                        //logger.debug("Bottom increment");
-
+                        logger.debug("uponPrepareOkMessage: Another Bottom");
                         // Increment counter of prepareOks
                         ps.incrementPrepareOkCounter();
                     }
@@ -162,24 +158,23 @@ public class PaxosAgreement extends GenericProtocol {
 
                 // If majority quorum was achieved send accept messages to all
                 if (ps.getPrepareOkCounter() >= ps.getQuorumSize()) {
-                    //logger.debug("Quorum achieved");
+                    logger.debug("uponPrepareOkMessage: Got PrepareOk majority");
+                    ps.setPrepareOkMajority(true);
 
                     // If highest prepare is -1, then our seqNumber was the winner
-                    if (ps.getHighestPrepareOk() == -1)
+                    if (ps.getHighestPrepareOk() == -1) {
                         ps.setHighestAcceptedValue(ps.getInitialProposal());
-                    // TODO: mudei para accepted get initial proposal
+                        logger.debug("uponPrepareOkMessage: Sending my Proposal");
+                    }
 
-                    cancelTimer(ps.getPrepareOkTimer());
-                    // TODO: mudei para enviar accepted
                     OperationAndId opnId = ps.getHighestAcceptedValue();
+
                     for (Host h : ps.getMembership()) {
-                        //logger.debug("Send Accept");
                         sendMessage(new AcceptMessage(instance, opnId.getOpId(),
                                 opnId.getOperation().toByteArray(), ps.getSn()), h);
                     }
 
-                    // Initializing timer that expires when a quorum of acceptOks is not achieved
-                    ps.setAcceptOkTimer(setupTimer(new AcceptOkTimer(instance), 5000));
+                    logger.debug("uponPrepareOkMessage: Sent AcceptMessages");
                 }
 
             } else {
@@ -195,21 +190,29 @@ public class PaxosAgreement extends GenericProtocol {
 
     private void uponAcceptMessage(AcceptMessage msg, Host host, short sourceProto, int channelId) {
         try {
-            int msgSn = msg.getSn();
             int instance = msg.getInstance();
-            PaxosState ps = getPaxosInstance(instance);
 
-            // If seqNumber of accept is equal or higher than our highest prepare
-            if (msgSn >= ps.getHighestPrepare()) {
-                ps.setHighestAccept(msgSn);
-                OperationAndId opnId = new OperationAndId(Operation.fromByteArray(msg.getOp()),
-                        msg.getOpId());
-                ps.setHighestAcceptedValue(opnId);
+            if(currentInstance >= 0 && instance >= currentInstance){
+                int msgSn = msg.getSn();
 
-                // Send acceptOk with that seqNumber and value to all learners
-                for (Host h : ps.getMembership()) {
-                    sendMessage(new AcceptOkMessage(instance, opnId.getOpId(),
-                            opnId.getOperation().toByteArray(), msgSn), h);
+                PaxosState ps = getPaxosInstance(instance);
+                logger.debug("uponAcceptMessage: MsgSn: {}, MsgInstance: {}", msgSn, instance);
+
+                // If seqNumber of accept is equal or higher than our highest prepare
+                if (msgSn >= ps.getHighestPrepare()) {
+                    logger.debug("uponAcceptMessage: Will accept this operation");
+                    ps.setHighestAccept(msgSn);
+                    OperationAndId opnId = new OperationAndId(Operation.fromByteArray(msg.getOp()),
+                            msg.getOpId());
+                    ps.setHighestAcceptedValue(opnId);
+
+                    // Send acceptOk with that seqNumber and value to all learners
+                    for (Host h : ps.getMembership()) {
+                        sendMessage(new AcceptOkMessage(instance, opnId.getOpId(),
+                                opnId.getOperation().toByteArray(), msgSn), h);
+                    }
+
+                    logger.debug("uponAcceptMessage: Sent AcceptOkMessages");
                 }
             }
 
@@ -224,39 +227,51 @@ public class PaxosAgreement extends GenericProtocol {
             PaxosState ps = getPaxosInstance(instance);
 
             // To prevent from deciding more that once in the same instance
-            if (currentInstance >= 0 && instance >= currentInstance) {
-                logger.debug("Entrei");
-
+            // TODO: Adicionamos acceptOkMajority
+            if (currentInstance >= 0 && instance >= currentInstance && !ps.haveAcceptOkMajority()) {
+                logger.debug("uponAcceptOkMessage: MsgSn: {}, MsgInstance: {}", msg.getHighestAccept(), instance);
 
                 // Update value and reset counter if the seqNumber is higher
-                int highestAccept = ps.getHighestAccept();
-                if (msg.getHighestAccept() > highestAccept) {
-                    logger.debug("Bigger accept");
+                int highestLearned = ps.getHighestLearned();
+                int msgHighestAccept = msg.getHighestAccept();
+
+                if (msgHighestAccept > highestLearned) {
+                    logger.debug("uponAcceptOkMessage: Old Sn: {}, New Sn: {}", highestLearned, msgHighestAccept);
                     ps.resetAcceptOkCounter();
                     ps.incrementAcceptOkCounter();
-                    ps.setHighestAccept(highestAccept);
-                    ps.setHighestAcceptedValue(new OperationAndId(Operation.fromByteArray(msg.getOp()),
+                    ps.setHighestLearned(msgHighestAccept);
+                    ps.setHighestLearnedValue(new OperationAndId(Operation.fromByteArray(msg.getOp()),
                             msg.getOpId()));
-                }
-                else if (msg.getHighestAccept() == highestAccept) {
-                    logger.debug("Equal accept");
+
+                } else if (msgHighestAccept == highestLearned) {
+                    logger.debug("uponAcceptOkMessage: Increment AcceptOk Counter");
                     ps.incrementAcceptOkCounter();
                 }
 
-                //If majority quorum was achieved
+                // If majority quorum was achieved
                 if (ps.getAcceptOkCounter() >= ps.getQuorumSize()) {
-                    cancelTimer(ps.getAcceptOkTimer());
-                    OperationAndId opnId = ps.getHighestAcceptedValue();
-                    //If the quorum is for the current instance then decide
+                    logger.debug("uponAcceptOkMessage: Got AcceptOk majority");
+                    ps.setAcceptOkMajority(true);
+
+                    logger.debug("uponAcceptOkMessage: cancelled PaxosTimer {}", ps.getPaxosTimer());
+                    cancelTimer(ps.getPaxosTimer());
+
+                    OperationAndId opnId = ps.getHighestLearnedValue();
+                    // If the quorum is for the current instance then decide
                     if (currentInstance == instance) {
                         triggerNotification(new DecidedNotification(instance, opnId.getOpId(),
                                 opnId.getOperation().toByteArray()));
-                        logger.debug(myself + " decided " + opnId.getOpId() + " on instance " + currentInstance);
+
+                        logger.debug("uponAcceptOkMessage: Decided {} in instance {}", opnId.getOpId(), instance);
+
                         currentInstance++;
                         // TODO: limpar tudo desta instancia pq já acabou??
                         // Execute all pending decisions, if there are any
                         ps = getPaxosInstance(currentInstance);
+
                         while (ps.getToDecide() != null) {
+                            logger.debug("uponAcceptOkMessage: Decided {} in instance {}",
+                                    opnId.getOpId(), currentInstance);
                             opnId = ps.getToDecide();
                             triggerNotification(new DecidedNotification(currentInstance++,
                                     opnId.getOpId(), opnId.getOperation().toByteArray()));
@@ -264,9 +279,11 @@ public class PaxosAgreement extends GenericProtocol {
                             ps = getPaxosInstance(currentInstance);
                         }
                     }
-                    //If the quorum is not for the current instance save decision for later
-                    else
+                    // If the quorum is not for the current instance save decision for later
+                    else {
                         ps.setToDecide(opnId);
+                        logger.debug("uponAcceptOkMessage: Saved Operation for future decide");
+                    }
                 }
 
             } else {
@@ -274,13 +291,14 @@ public class PaxosAgreement extends GenericProtocol {
                 // already receiving messages from the other agreement instances,
                 // maybe we should do something with them...?
             }
+
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
     private void uponMsgFail(ProtoMessage msg, Host host, short destProto, Throwable throwable, int channelId) {
-        //If a message fails to be sent, for whatever reason, log the message and the reason
+        // If a message fails to be sent, for whatever reason, log the message and the reason
         logger.error("Message {} to {} failed, reason: {}", msg, host, throwable);
     }
 
@@ -288,7 +306,7 @@ public class PaxosAgreement extends GenericProtocol {
     /*--------------------------------- Notifications ------------------------------------ */
 
     private void uponJoinedNotification(JoinedNotification notification, short sourceProto) {
-        //We joined the system and can now start doing things
+        // We joined the system and can now start doing things
         currentInstance = notification.getJoinInstance();
         PaxosState ps = getPaxosInstance(currentInstance);
         for(Host h : notification.getMembership()) {
@@ -303,20 +321,23 @@ public class PaxosAgreement extends GenericProtocol {
 
     private void uponProposeRequest(ProposeRequest request, short sourceProto) {
         try {
-            logger.debug("Received " + request);
+            logger.debug("uponProposeRequest: New Propose");
+
             int instance = request.getInstance();
             PaxosState ps = getPaxosInstance(instance);
             // Generating seqNumber
             ps.generateSn(myself);
             List<Host> membership = ps.getMembership();
             membership.forEach(h -> sendMessage(new PrepareMessage(ps.getSn(), instance), h));
-            logger.debug("Sending to: " + membership);
+            logger.debug("uponProposeRequest: Sent Prepares");
 
             // Save proposed value
             ps.setInitialProposal(new OperationAndId(Operation.fromByteArray(request.getOperation()),
                     request.getOpId()));
-            // Initializing timer that expires when a quorum of prepareOks is not achieved
-            ps.setPrepareOkTimer(setupTimer(new PrepareOkTimer(instance), 5000));
+
+            long timerId = setupTimer(new PaxosTimer(instance), 5000);
+            logger.debug("uponProposeRequest: New PrepareOkTimer created with id {}", timerId);
+            ps.setPaxosTimer(timerId);
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -343,35 +364,42 @@ public class PaxosAgreement extends GenericProtocol {
         closeConnection(replica);
     }
 
-
     /*--------------------------------- Timers ---------------------------------------- */
 
-    private void uponPrepareOkTimer(PrepareOkTimer prepareOkTimer, long timerId) {
-        logger.debug("PrepareOkTimer Timeout");
-        retryPrepareMessage(prepareOkTimer.getInstance());
-    }
+    private void uponPaxosTimer(PaxosTimer paxosTimer, long timerId) {
+        logger.debug("PaxosTimer Timeout with id: {}", timerId);
+        int instance = paxosTimer.getInstance();
+        PaxosState ps = getPaxosInstance(instance);
 
-    private void uponAcceptOkTimer(AcceptOkTimer acceptOkTimer, long timerId) {
-        logger.debug("AcceptOkTimer Timeout");
-        retryPrepareMessage(acceptOkTimer.getInstance());
+        // If we have not decided yet, retry
+        if(!ps.haveAcceptOkMajority()) {
+            // Increasing seqNumber
+            ps.increaseSn();
+            ps.setPrepareOkMajority(false);
+            ps.setAcceptOkMajority(false);
+            List<Host> membership = ps.getMembership();
+            membership.forEach(h -> sendMessage(new PrepareMessage(ps.getSn(), instance), h));
+            logger.debug("uponPaxosTimer: Retry sending to: " + membership);
+        }
     }
-
 
     /*--------------------------------- Procedures ---------------------------------------- */
 
     private PaxosState getPaxosInstance(int instance) {
-        if(!paxosByInstance.containsKey(instance))
-            paxosByInstance.put(instance, new PaxosState());
+        if(!paxosByInstance.containsKey(instance)){
+            PaxosState newPaxos = new PaxosState();
+
+            // Get membership from last instance
+            if(instance > 0) {
+                List<Host> previousMembership = paxosByInstance.get(instance - 1).getMembership();
+
+                for(Host h: previousMembership)
+                    newPaxos.addReplicaToMembership(h);
+            }
+
+            paxosByInstance.put(instance, newPaxos);
+        }
+
         return paxosByInstance.get(instance);
     }
-
-    private void retryPrepareMessage(int instance) {
-        PaxosState ps = getPaxosInstance(instance);
-        // Increasing seqNumber
-        ps.increaseSn();
-        List<Host> membership = ps.getMembership();
-        membership.forEach(h -> sendMessage(new PrepareMessage(ps.getSn(), instance), h));
-        logger.debug("Sending to: " + membership);
-    }
-
 }

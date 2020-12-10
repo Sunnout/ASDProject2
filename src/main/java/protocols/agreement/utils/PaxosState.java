@@ -21,12 +21,17 @@ public class PaxosState {
     private OperationAndId highestAcceptedValue; // Highest accepted value
     private int acceptOkCounter; // Number of acceptOks for the same seqNumber
 
+    private int highestLearned; // Highest accepted seqNumber
+    private OperationAndId highestLearnedValue; // Highest accepted value
+
     private Host replicaToRemove; // Host to remove
 
     private OperationAndId toDecide; // Value to decide
 
-    private long prepareOkTimer; // Id of prepareOkTimer
-    private long acceptOkTimer; // Id of acceptOkTimer
+    private long paxosTimer; // Id of prepareOkTimer
+
+    private boolean prepareOkMajority;
+    private boolean acceptOkMajority;
 
     public PaxosState() {
         this.sn = -1;
@@ -38,10 +43,13 @@ public class PaxosState {
         this.highestAccept = -1;
         this.highestAcceptedValue = null;
         this.acceptOkCounter = 0;
+        this.highestLearned = -1;
+        this.highestLearnedValue = null;
         this.replicaToRemove = null;
         this.toDecide = null;
-        this.prepareOkTimer = -1;
-        this.acceptOkTimer = -1;
+        this.paxosTimer = -1;
+        this.prepareOkMajority = false;
+        this.acceptOkMajority = false;
     }
 
     public int getSn() {
@@ -131,6 +139,22 @@ public class PaxosState {
         this.highestAcceptedValue = highestAcceptedValue;
     }
 
+    public int getHighestLearned() {
+        return highestLearned;
+    }
+
+    public void setHighestLearned(int highestLearned) {
+        this.highestLearned = highestLearned;
+    }
+
+    public OperationAndId getHighestLearnedValue() {
+        return highestLearnedValue;
+    }
+
+    public void setHighestLearnedValue(OperationAndId highestLearnedValue) {
+        this.highestLearnedValue = highestLearnedValue;
+    }
+
     public int getAcceptOkCounter() {
         return acceptOkCounter;
     }
@@ -151,19 +175,26 @@ public class PaxosState {
         this.toDecide = toDecide;
     }
 
-    public long getPrepareOkTimer() {
-        return prepareOkTimer;
+    public long getPaxosTimer() {
+        return paxosTimer;
     }
 
-    public void setPrepareOkTimer(long prepareOkTimer) {
-        this.prepareOkTimer = prepareOkTimer;
+    public void setPaxosTimer(long paxosTimer) {
+        this.paxosTimer = paxosTimer;
+    }
+    public boolean havePrepareOkMajority() {
+        return prepareOkMajority;
     }
 
-    public long getAcceptOkTimer() {
-        return acceptOkTimer;
+    public void setPrepareOkMajority(boolean prepareOkMajority) {
+        this.prepareOkMajority = prepareOkMajority;
     }
 
-    public void setAcceptOkTimer(long acceptOkTimer) {
-        this.acceptOkTimer = acceptOkTimer;
+    public boolean haveAcceptOkMajority() {
+        return acceptOkMajority;
+    }
+
+    public void setAcceptOkMajority(boolean acceptOkMajority) {
+        this.acceptOkMajority = acceptOkMajority;
     }
 }
