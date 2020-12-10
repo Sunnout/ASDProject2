@@ -21,8 +21,8 @@ public class PaxosState {
     private OperationAndId highestAcceptedValue; // Highest accepted value
     private int acceptOkCounter; // Number of acceptOks for the same seqNumber
 
-    private int highestLearned; // Highest accepted seqNumber
-    private OperationAndId highestLearnedValue; // Highest accepted value
+    private int highestLearned; // Highest learned seqNumber
+    private OperationAndId highestLearnedValue; // Highest learned value
 
     private Host replicaToRemove; // Host to remove
 
