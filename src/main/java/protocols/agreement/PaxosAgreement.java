@@ -90,7 +90,7 @@ public class PaxosAgreement extends GenericProtocol {
         try {
             int instance = msg.getInstance();
 
-            if(currentInstance >= 0 && instance >= currentInstance){
+            if (instance >= currentInstance) {
                 int msgSn = msg.getSn();
                 PaxosState ps = getPaxosInstance(instance);
                 logger.debug("uponPrepareMessage: MsgSn: {}, MsgInstance: {}", msgSn, instance);
@@ -125,7 +125,7 @@ public class PaxosAgreement extends GenericProtocol {
             int instance = msg.getInstance();
             PaxosState ps = getPaxosInstance(instance);
 
-            if (currentInstance >= 0 && instance >= currentInstance && !ps.havePrepareOkMajority()) {
+            if (instance >= currentInstance && !ps.havePrepareOkMajority()) {
                 int msgSn = msg.getHighestAccepted();
 
                 logger.debug("uponPrepareOkMessage: MsgSn: {}, MsgInstance: {}", msgSn, instance);
@@ -177,10 +177,6 @@ public class PaxosAgreement extends GenericProtocol {
                     logger.debug("uponPrepareOkMessage: Sent AcceptMessages");
                 }
 
-            } else {
-                //TODO: We have not yet received a JoinedNotification,
-                // but we are already receiving messages from the other
-                // agreement instances, maybe we should do something with them...?
             }
 
         } catch (IOException e) {
@@ -192,7 +188,7 @@ public class PaxosAgreement extends GenericProtocol {
         try {
             int instance = msg.getInstance();
 
-            if(currentInstance >= 0 && instance >= currentInstance){
+            if (instance >= currentInstance) {
                 int msgSn = msg.getSn();
 
                 PaxosState ps = getPaxosInstance(instance);
@@ -227,8 +223,7 @@ public class PaxosAgreement extends GenericProtocol {
             PaxosState ps = getPaxosInstance(instance);
 
             // To prevent from deciding more that once in the same instance
-            // TODO: Adicionamos acceptOkMajority
-            if (currentInstance >= 0 && instance >= currentInstance && !ps.haveAcceptOkMajority()) {
+            if (instance >= currentInstance && !ps.haveAcceptOkMajority()) {
                 logger.debug("uponAcceptOkMessage: MsgSn: {}, MsgInstance: {}", msg.getHighestAccept(), instance);
 
                 // Update value and reset counter if the seqNumber is higher
@@ -269,14 +264,15 @@ public class PaxosAgreement extends GenericProtocol {
                         // Execute all pending decisions, if there are any
                         ps = getPaxosInstance(currentInstance);
 
-                        while (ps.getToDecide() != null) {
+                        opnId = ps.getToDecide();
+                        while (opnId != null) {
                             logger.debug("uponAcceptOkMessage: Decided {} in instance {}",
                                     opnId.getOpId(), currentInstance);
-                            opnId = ps.getToDecide();
                             triggerNotification(new DecidedNotification(currentInstance++,
                                     opnId.getOpId(), opnId.getOperation().toByteArray()));
                             // TODO: limpar tudo destas instancias pq já acabaram??
                             ps = getPaxosInstance(currentInstance);
+                            opnId = ps.getToDecide();
                         }
                     }
                     // If the quorum is not for the current instance save decision for later
@@ -285,11 +281,6 @@ public class PaxosAgreement extends GenericProtocol {
                         logger.debug("uponAcceptOkMessage: Saved Operation for future decide");
                     }
                 }
-
-            } else {
-                //TODO We have not yet received a JoinedNotification, but we are
-                // already receiving messages from the other agreement instances,
-                // maybe we should do something with them...?
             }
 
         } catch (Exception e) {
@@ -306,16 +297,32 @@ public class PaxosAgreement extends GenericProtocol {
     /*--------------------------------- Notifications ------------------------------------ */
 
     private void uponJoinedNotification(JoinedNotification notification, short sourceProto) {
-        // We joined the system and can now start doing things
-        currentInstance = notification.getJoinInstance();
-        PaxosState ps = getPaxosInstance(currentInstance);
-        for(Host h : notification.getMembership()) {
-            ps.addReplicaToMembership(h);
-            openConnection(h);
-        }
-        logger.info("Agreement starting at instance {},  membership: {}", currentInstance, ps.getMembership());
-    }
+        try {
+            // We joined the system and can now start doing things
+            currentInstance = notification.getJoinInstance();
+            PaxosState ps = getPaxosInstance(currentInstance);
 
+            logger.info("Agreement starting at instance {},  membership: {}",
+                    currentInstance, ps.getMembership());
+
+            for (Host h : notification.getMembership()) {
+                ps.addReplicaToMembership(h);
+                openConnection(h);
+            }
+
+            // If we already decided a value before joining, trigger the decide
+            OperationAndId opnId = ps.getToDecide();
+            while (opnId != null) {
+                triggerNotification(new DecidedNotification(currentInstance++,
+                        opnId.getOpId(), opnId.getOperation().toByteArray()));
+                ps = getPaxosInstance(currentInstance);
+                opnId = ps.getToDecide();
+            }
+            
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 
     /*--------------------------------- Requests ---------------------------------------- */
 
@@ -372,7 +379,7 @@ public class PaxosAgreement extends GenericProtocol {
         PaxosState ps = getPaxosInstance(instance);
 
         // If we have not decided yet, retry
-        if(!ps.haveAcceptOkMajority()) {
+        if (!ps.haveAcceptOkMajority()) {
             // Increasing seqNumber
             ps.increaseSn();
             ps.setPrepareOkMajority(false);
@@ -386,15 +393,17 @@ public class PaxosAgreement extends GenericProtocol {
     /*--------------------------------- Procedures ---------------------------------------- */
 
     private PaxosState getPaxosInstance(int instance) {
-        if(!paxosByInstance.containsKey(instance)){
+        if (!paxosByInstance.containsKey(instance)) {
             PaxosState newPaxos = new PaxosState();
 
             // Get membership from last instance
-            if(instance > 0) {
+            if (instance > 0) {
                 List<Host> previousMembership = paxosByInstance.get(instance - 1).getMembership();
 
-                for(Host h: previousMembership)
+                for (Host h : previousMembership) {
                     newPaxos.addReplicaToMembership(h);
+                    openConnection(h);
+                }
             }
 
             paxosByInstance.put(instance, newPaxos);

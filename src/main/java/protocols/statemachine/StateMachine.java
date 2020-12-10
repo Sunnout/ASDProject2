@@ -190,9 +190,6 @@ public class StateMachine extends GenericProtocol {
             logger.debug("uponDecidedNotification: Received notification: " + notification);
             Operation op = Operation.fromByteArray(notification.getOperation());
             int instance = notification.getInstance();
-//
-//            logger.debug("uponDecidedNotification: Received opId {}", notification.getOpId());
-//            logger.debug("uponDecidedNotification: Proposed opId {}", pendingOps.get(0).getOpId());
 
             boolean isMyOp = false;
 
