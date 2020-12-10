@@ -318,7 +318,7 @@ public class PaxosAgreement extends GenericProtocol {
                 ps = getPaxosInstance(currentInstance);
                 opnId = ps.getToDecide();
             }
-            
+
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -402,13 +402,14 @@ public class PaxosAgreement extends GenericProtocol {
 
                 for (Host h : previousMembership) {
                     newPaxos.addReplicaToMembership(h);
-                    openConnection(h);
+
+                    if(currentInstance == -1)
+                        openConnection(h);
                 }
             }
 
             paxosByInstance.put(instance, newPaxos);
         }
-
         return paxosByInstance.get(instance);
     }
 }
