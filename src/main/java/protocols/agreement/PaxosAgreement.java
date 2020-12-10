@@ -336,7 +336,7 @@ public class PaxosAgreement extends GenericProtocol {
                     request.getOpId()));
 
             long timerId = setupTimer(new PaxosTimer(instance), 5000);
-            logger.debug("uponProposeRequest: New PrepareOkTimer created with id {}", timerId);
+            logger.debug("uponProposeRequest: New PaxosTimer created with id {}", timerId);
             ps.setPaxosTimer(timerId);
 
         } catch (Exception e) {

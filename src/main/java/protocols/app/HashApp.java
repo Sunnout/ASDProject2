@@ -134,7 +134,7 @@ public class HashApp extends GenericProtocol {
             if (op.getOpType() == RequestMessage.WRITE)
                 data.put(op.getKey(), op.getData());
             executedOps++;
-            if (executedOps % 10000 == 0) {
+            if (executedOps % 1000 == 0) {
                 logger.info("Current state N_OPS= {}, MAP_SIZE={}, HASH={}",
                         executedOps, data.size(), Hex.encodeHexString(cumulativeHash));
             }

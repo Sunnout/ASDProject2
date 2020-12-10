@@ -159,10 +159,11 @@ public class StateMachine extends GenericProtocol {
 
     private void uponOrderRequest(OrderRequest request, short sourceProto) {
         try {
-            logger.debug("Received request: " + request);
+            logger.debug("uponOrderRequest: Received request: " + request);
 
             // If I am active and have not proposed anything in this instance, propose the value
             if (state == State.ACTIVE && pendingOps.size() == 0) {
+                logger.debug("uponOrderRequest: proposed {} in instance {}", request.getOpId(), currentInstance);
                 sendRequest(new ProposeRequest(currentInstance, request.getOpId(), request.getOperation()),
                         PaxosAgreement.PROTOCOL_ID);
             }
@@ -186,12 +187,24 @@ public class StateMachine extends GenericProtocol {
 
     private void uponDecidedNotification(DecidedNotification notification, short sourceProto) {
         try {
-            logger.debug("Received notification: " + notification);
+            logger.debug("uponDecidedNotification: Received notification: " + notification);
             Operation op = Operation.fromByteArray(notification.getOperation());
             int instance = notification.getInstance();
+//
+//            logger.debug("uponDecidedNotification: Received opId {}", notification.getOpId());
+//            logger.debug("uponDecidedNotification: Proposed opId {}", pendingOps.get(0).getOpId());
 
-            // If we proposed this operation, remove it from the pending list
-            boolean isMyOp = pendingOps.remove(op);
+            boolean isMyOp = false;
+
+            if(pendingOps.size() > 0){
+                isMyOp = pendingOps.get(0).getOpId().compareTo(notification.getOpId()) == 0;
+
+                // If we proposed this operation, remove it from the pending list
+                if(isMyOp)
+                    pendingOps.remove(0);
+            }
+
+            logger.debug("uponDecidedNotification: Decision was mine? {}", isMyOp);
 
             // The decided operation was from the application, so we notify it
             if (op.getOpType() != MEMBERSHIP_OP_TYPE)
@@ -208,6 +221,8 @@ public class StateMachine extends GenericProtocol {
             // If there are pending operations, propose the first one
             if (pendingOps.size() > 0) {
                 OperationAndId opnId = pendingOps.get(0);
+                logger.debug("uponDecidedNotification: proposed {} in instance {}", opnId.getOpId(), currentInstance);
+
                 sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
                         PaxosAgreement.PROTOCOL_ID);
             }

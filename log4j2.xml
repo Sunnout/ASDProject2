@@ -17,13 +17,15 @@
         <Logger level="info" name="pt.unl.fct.di.novasys.network"/>
         <Logger level="info" name="pt.unl.fct.di.novasys.channel"/>
         <Logger level="info" name="pt.unl.fct.di.novasys.babel"/>
-
+        <Logger level="info" name="protocols.app"/>
+        <!--
         <Logger level="debug" name="protocols.statemachine"/>
-        <Logger level="debug" name="protocols.agreement"/>
+        -->
+        <Logger level="info" name="protocols.agreement"/>
 
 
         <Root level="info">
-            <AppenderRef ref="Console" level="debug"/>
+            <AppenderRef ref="Console" level="info"/>
             <AppenderRef ref="MyFile" level="debug"/>
         </Root>
     </Loggers>
