@@ -1,12 +1,4 @@
-2020-12-10 16:04:01:531 0 sec: 0 operations; est completion in 0 second 
-2020-12-10 16:04:06:483 5 sec: 54 operations; 10.79 current ops/sec; est completion in 15 minutes [READ AverageLatency(us)=7998.66] [UPDATE AverageLatency(us)=8130.47] 
-2020-12-10 16:04:11:483 10 sec: 251 operations; 39.4 current ops/sec; est completion in 6 minutes [READ AverageLatency(us)=59389.99] [UPDATE AverageLatency(us)=104890.06] 
-2020-12-10 16:04:16:481 15 sec: 609 operations; 71.63 current ops/sec; est completion in 3 minutes [READ AverageLatency(us)=31917.19] [UPDATE AverageLatency(us)=58528.38] 
-2020-12-10 16:04:21:483 20 sec: 1323 operations; 142.74 current ops/sec; est completion in 2 minutes [READ AverageLatency(us)=31818.36] [UPDATE AverageLatency(us)=16775.68] 
-2020-12-10 16:04:26:483 25 sec: 3105 operations; 356.4 current ops/sec; est completion in 56 seconds [READ AverageLatency(us)=14719.08] [UPDATE AverageLatency(us)=7974.06] 
-2020-12-10 16:04:31:484 30 sec: 3658 operations; 110.6 current ops/sec; est completion in 53 seconds [READ AverageLatency(us)=37257.75] [UPDATE AverageLatency(us)=21157.39] 
-2020-12-10 16:04:36:483 35 sec: 5002 operations; 268.8 current ops/sec; est completion in 35 seconds [READ AverageLatency(us)=1767.69] [UPDATE AverageLatency(us)=1508.23] 
-2020-12-10 16:04:41:484 40 sec: 5344 operations; 68.4 current ops/sec; est completion in 35 seconds [READ AverageLatency(us)=29572.16] [UPDATE AverageLatency(us)=69341.8] 
-2020-12-10 16:04:46:484 45 sec: 6689 operations; 269 current ops/sec; est completion in 23 seconds [READ AverageLatency(us)=17801.71] [CLEANUP AverageLatency(us)=1] [UPDATE AverageLatency(us)=9142.98] 
-2020-12-10 16:04:51:484 50 sec: 9631 operations; 588.28 current ops/sec; est completion in 2 second [READ AverageLatency(us)=914.2] [CLEANUP AverageLatency(us)=0] [UPDATE AverageLatency(us)=7484.61] 
-2020-12-10 16:04:51:811 50 sec: 10000 operations; 1128.44 current ops/sec; [READ AverageLatency(us)=881.32] [CLEANUP AverageLatency(us)=0] [UPDATE AverageLatency(us)=875.85] 
+2020-12-11 17:53:00:931 0 sec: 0 operations; est completion in 0 second 
+2020-12-11 17:53:05:820 5 sec: 0 operations; est completion in 106751991167300 days 15 hours 
+2020-12-11 17:53:10:819 10 sec: 0 operations; est completion in 106751991167300 days 15 hours 
+2020-12-11 17:53:15:820 15 sec: 0 operations; est completion in 106751991167300 days 15 hours 

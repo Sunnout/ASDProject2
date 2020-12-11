@@ -106,12 +106,12 @@ public class PaxosAgreement extends GenericProtocol {
                         OperationAndId opToSend = ps.getHighestAcceptedValue();
                         logger.debug("uponPrepareMessage: sending OpId: {}", opToSend.getOpId());
                         sendMessage(new PrepareOkMessage(instance, opToSend.getOpId(),
-                                opToSend.getOperation().toByteArray(), highestAccepted), host);
+                                opToSend.getOperation().toByteArray(), highestAccepted, msgSn), host);
                     }
                     // If we have not accepted anything, send bottoms (nulls and -1)
                     else {
                         logger.debug("uponPrepareMessage: sending bottoms");
-                        sendMessage(new PrepareOkMessage(instance, null, null, -1), host);
+                        sendMessage(new PrepareOkMessage(instance, null, null, -1, msgSn), host);
                     }
                 }
             }
@@ -129,19 +129,21 @@ public class PaxosAgreement extends GenericProtocol {
             // If the message is not from an instance that has already ended
             // and we don't have a majority of prepareOks
             if (instance >= currentInstance && !ps.havePrepareOkMajority()) {
-                int msgSn = msg.getHighestAccepted();
+                int msgSn = msg.getSn();
+                int highestAccepted = msg.getHighestAccepted();
                 logger.debug("uponPrepareOkMessage: MsgSn: {}, MsgInstance: {}", msgSn, instance);
 
                 // If the prepareOk didn't return bottoms and the seqNumber is higher than the one
                 // we have, we replace the value with the new one
-                if (msgSn != -1) {
-                    if (msgSn > ps.getHighestPrepareOk()) {
+                if (highestAccepted != -1) {
+                    // TODO: quorum de prepareOks para o mesmo seqNumber
+                    if (highestAccepted > ps.getHighestPrepareOk()) {
                         // Reset counter because we changed seqNumber
                         logger.debug("uponPrepareOkMessage: Old Sn: {}, New Sn: {}"
-                                , ps.getHighestPrepareOk(), msgSn);
+                                , ps.getHighestPrepareOk(), highestAccepted);
 
                         ps.resetPrepareOkCounter();
-                        ps.setHighestPrepareOk(msgSn);
+                        ps.setHighestPrepareOk(highestAccepted);
                         ps.setHighestAcceptedValue(new OperationAndId(Operation.fromByteArray(msg.getOp()),
                                 msg.getOpId()));
                     }
@@ -200,6 +202,7 @@ public class PaxosAgreement extends GenericProtocol {
                 // If seqNumber of accept is equal or higher than our highest prepare
                 if (msgSn >= ps.getHighestPrepare()) {
                     logger.debug("uponAcceptMessage: Will accept this operation");
+                    // TODO: atualizar np do acceptor tb
                     ps.setHighestAccept(msgSn);
                     OperationAndId opnId = new OperationAndId(Operation.fromByteArray(msg.getOp()),
                             msg.getOpId());
