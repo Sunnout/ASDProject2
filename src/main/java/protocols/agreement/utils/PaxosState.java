@@ -6,6 +6,7 @@ import pt.unl.fct.di.novasys.network.data.Host;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Random;
 
 public class PaxosState {
 
@@ -25,6 +26,8 @@ public class PaxosState {
     private OperationAndId highestLearnedValue; // Highest learned value
 
     private int maxSnAccept; // Biggest seqNumber of accepted value in prepareOk
+
+    private int highestSeenSn; // Highest seen seqNumber
 
     private Host replicaToRemove; // Host to remove
 
@@ -49,6 +52,7 @@ public class PaxosState {
         this.highestLearned = -1;
         this.highestLearnedValue = null;
         this.maxSnAccept = -1;
+        this.highestSeenSn = -1;
         this.replicaToRemove = null;
         this.toDecide = null;
         this.paxosTimer = -1;
@@ -62,11 +66,15 @@ public class PaxosState {
 
     public void generateSn(Host myself) {
         Collections.sort(membership, new HostComparator());
-        this.sn = membership.indexOf(myself);
+        this.sn = membership.indexOf(myself) + 1;
     }
 
     public void increaseSn() {
-        this.sn += getMembershipSize();
+        Random r = new Random();
+        do {
+            int multiplier = r.nextInt(5) + 1;
+            this.sn += multiplier * getMembershipSize();
+        } while(this.sn < this.highestSeenSn);
     }
 
     public List<Host> getMembership() {
@@ -97,6 +105,8 @@ public class PaxosState {
 
     public void setHighestPrepare(int highestPrepare) {
         this.highestPrepare = highestPrepare;
+        if(this.highestPrepare > this.highestSeenSn)
+            this.highestSeenSn = this.highestPrepare;
     }
 
     public int getHighestPrepareOk() {
@@ -133,6 +143,8 @@ public class PaxosState {
 
     public void setHighestAccept(int highestAccept) {
         this.highestAccept = highestAccept;
+        if(this.highestAccept > this.highestSeenSn)
+            this.highestSeenSn = this.highestAccept;
     }
 
     public OperationAndId getHighestAcceptedValue() {
@@ -149,6 +161,8 @@ public class PaxosState {
 
     public void setHighestLearned(int highestLearned) {
         this.highestLearned = highestLearned;
+        if(this.highestLearned > this.highestSeenSn)
+            this.highestSeenSn = this.highestLearned;
     }
 
     public OperationAndId getHighestLearnedValue() {
@@ -165,6 +179,8 @@ public class PaxosState {
 
     public void setMaxSnAccept(int maxSnAccept) {
         this.maxSnAccept = maxSnAccept;
+        if(this.maxSnAccept > this.highestSeenSn)
+            this.highestSeenSn = this.maxSnAccept;
     }
 
     public int getAcceptOkCounter() {
