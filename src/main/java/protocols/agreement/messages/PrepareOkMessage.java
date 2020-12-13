@@ -14,13 +14,16 @@ public class PrepareOkMessage  extends ProtoMessage {
     private final int instance;
     private final byte[] op;
     private final int highestAccepted;
+    private final int sn;
 
-    public PrepareOkMessage(int instance, UUID opId, byte[] op, int highestAccepted) {
+
+    public PrepareOkMessage(int instance, UUID opId, byte[] op, int highestAccepted, int sn) {
         super(MSG_ID);
         this.instance = instance;
         this.op = op;
         this.opId = opId;
         this.highestAccepted = highestAccepted;
+        this.sn = sn;
     }
 
     public int getInstance() {
@@ -39,6 +42,10 @@ public class PrepareOkMessage  extends ProtoMessage {
         return highestAccepted;
     }
 
+    public int getSn() {
+        return sn;
+    }
+
     @Override
     public String toString() {
         if(op == null)
@@ -47,6 +54,7 @@ public class PrepareOkMessage  extends ProtoMessage {
                     ", instance=" + instance +
                     ", op=" + op +
                     ", highestAccepted=" + highestAccepted +
+                    ", sn=" + sn +
                     '}';
 
         return "PrepareOkMessage{" +
@@ -54,6 +62,7 @@ public class PrepareOkMessage  extends ProtoMessage {
                 ", instance=" + instance +
                 ", op=" + Hex.encodeHexString(op) +
                 ", highestAccepted=" + highestAccepted +
+                ", sn=" + sn +
                 '}';
     }
 
@@ -71,6 +80,7 @@ public class PrepareOkMessage  extends ProtoMessage {
                 out.writeBytes(msg.op);
             }
             out.writeInt(msg.highestAccepted);
+            out.writeInt(msg.sn);
         }
 
         @Override
@@ -86,7 +96,8 @@ public class PrepareOkMessage  extends ProtoMessage {
                 in.readBytes(op);
             }
             int highestAccepted = in.readInt();
-            return new PrepareOkMessage(instance, opId, op, highestAccepted);
+            int sn = in.readInt();
+            return new PrepareOkMessage(instance, opId, op, highestAccepted, sn);
         }
     };
 

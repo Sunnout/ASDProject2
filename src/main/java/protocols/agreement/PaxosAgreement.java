@@ -106,12 +106,12 @@ public class PaxosAgreement extends GenericProtocol {
                         OperationAndId opToSend = ps.getHighestAcceptedValue();
                         logger.debug("uponPrepareMessage: sending OpId: {}", opToSend.getOpId());
                         sendMessage(new PrepareOkMessage(instance, opToSend.getOpId(),
-                                opToSend.getOperation().toByteArray(), highestAccepted), host);
+                                opToSend.getOperation().toByteArray(), highestAccepted, msgSn), host);
                     }
                     // If we have not accepted anything, send bottoms (nulls and -1)
                     else {
                         logger.debug("uponPrepareMessage: sending bottoms");
-                        sendMessage(new PrepareOkMessage(instance, null, null, -1), host);
+                        sendMessage(new PrepareOkMessage(instance, null, null, -1, msgSn), host);
                     }
                 }
             }
@@ -129,25 +129,28 @@ public class PaxosAgreement extends GenericProtocol {
             // If the message is not from an instance that has already ended
             // and we don't have a majority of prepareOks
             if (instance >= currentInstance && !ps.havePrepareOkMajority()) {
-                int msgSn = msg.getHighestAccepted();
+                int highestAccepted = msg.getHighestAccepted();
+                int msgSn = msg.getSn();
                 logger.debug("uponPrepareOkMessage: MsgSn: {}, MsgInstance: {}", msgSn, instance);
 
                 // If the prepareOk didn't return bottoms and the seqNumber is higher than the one
                 // we have, we replace the value with the new one
-                if (msgSn != -1) {
+                if (highestAccepted != -1) {
                     if (msgSn > ps.getHighestPrepareOk()) {
                         // Reset counter because we changed seqNumber
                         logger.debug("uponPrepareOkMessage: Old Sn: {}, New Sn: {}"
                                 , ps.getHighestPrepareOk(), msgSn);
 
                         ps.resetPrepareOkCounter();
+                        // Increment counter of prepareOks
+                        ps.incrementPrepareOkCounter();
                         ps.setHighestPrepareOk(msgSn);
                         ps.setHighestAcceptedValue(new OperationAndId(Operation.fromByteArray(msg.getOp()),
                                 msg.getOpId()));
                     }
 
-                    // Increment counter of prepareOks
-                    ps.incrementPrepareOkCounter();
+                    if (msgSn == ps.getHighestPrepareOk())
+                        ps.incrementPrepareOkCounter();
 
                 }
                 // If the prepareOk returned bottoms
@@ -347,7 +350,7 @@ public class PaxosAgreement extends GenericProtocol {
                     request.getOpId()));
 
             // Setup PaxosTimer that expires if we don't decide
-            long timerId = setupTimer(new PaxosTimer(instance), 5000);
+            long timerId = setupTimer(new PaxosTimer(instance), 2000);
             ps.setPaxosTimer(timerId);
             logger.debug("uponProposeRequest: New PaxosTimer created with id {}", timerId);
 
@@ -377,12 +380,12 @@ public class PaxosAgreement extends GenericProtocol {
     /*--------------------------------- Timers ---------------------------------------- */
 
     private void uponPaxosTimer(PaxosTimer paxosTimer, long timerId) {
-        logger.debug("PaxosTimer Timeout with id: {}", timerId);
         int instance = paxosTimer.getInstance();
         PaxosState ps = getPaxosInstance(instance);
 
         // If we have not decided yet, retry prepare
         if (!ps.haveAcceptOkMajority()) {
+            logger.debug("PaxosTimer Timeout with id: {}", timerId);
             // Increasing seqNumber
             ps.increaseSn();
             ps.setPrepareOkMajority(false);
@@ -390,6 +393,11 @@ public class PaxosAgreement extends GenericProtocol {
             List<Host> membership = ps.getMembership();
             membership.forEach(h -> sendMessage(new PrepareMessage(ps.getSn(), instance), h));
             logger.debug("uponPaxosTimer: Retry sending to: " + membership);
+
+            // Setup new PaxosTimer that expires if we don't decide
+            long newTimerId = setupTimer(new PaxosTimer(instance), 2000);
+            ps.setPaxosTimer(newTimerId);
+            logger.debug("uponPaxosTimer: New PaxosTimer created with id {}", newTimerId);
         }
     }
 
