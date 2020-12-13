@@ -24,6 +24,8 @@ public class PaxosState {
     private int highestLearned; // Highest learned seqNumber
     private OperationAndId highestLearnedValue; // Highest learned value
 
+    private int maxSnAccept; // Biggest seqNumber of accepted value in prepareOk
+
     private Host replicaToRemove; // Host to remove
 
     private OperationAndId toDecide; // Value to decide
@@ -32,6 +34,7 @@ public class PaxosState {
 
     private boolean prepareOkMajority;
     private boolean acceptOkMajority;
+
 
     public PaxosState() {
         this.sn = -1;
@@ -45,6 +48,7 @@ public class PaxosState {
         this.acceptOkCounter = 0;
         this.highestLearned = -1;
         this.highestLearnedValue = null;
+        this.maxSnAccept = -1;
         this.replicaToRemove = null;
         this.toDecide = null;
         this.paxosTimer = -1;
@@ -153,6 +157,14 @@ public class PaxosState {
 
     public void setHighestLearnedValue(OperationAndId highestLearnedValue) {
         this.highestLearnedValue = highestLearnedValue;
+    }
+
+    public int getMaxSnAccept() {
+        return maxSnAccept;
+    }
+
+    public void setMaxSnAccept(int maxSnAccept) {
+        this.maxSnAccept = maxSnAccept;
     }
 
     public int getAcceptOkCounter() {

@@ -133,33 +133,40 @@ public class PaxosAgreement extends GenericProtocol {
                 int msgSn = msg.getSn();
                 logger.debug("uponPrepareOkMessage: MsgSn: {}, MsgInstance: {}", msgSn, instance);
 
-                // If the prepareOk didn't return bottoms and the seqNumber is higher than the one
-                // we have, we replace the value with the new one
-                if (highestAccepted != -1) {
-                    if (msgSn > ps.getHighestPrepareOk()) {
-                        // Reset counter because we changed seqNumber
-                        logger.debug("uponPrepareOkMessage: Old Sn: {}, New Sn: {}"
-                                , ps.getHighestPrepareOk(), msgSn);
+                // If the seqNumber of prepareOk is higher than the one we have and
+                // the accepted sn is not bottom, we replace the value with the new one
+                if (msgSn > ps.getHighestPrepareOk()) {
+                    // Reset counter because we changed seqNumber
+                    logger.debug("uponPrepareOkMessage: Old Sn: {}, New Sn: {}"
+                            , ps.getHighestPrepareOk(), msgSn);
+                    ps.resetPrepareOkCounter();
+                    // Increment counter of prepareOks
+                    ps.incrementPrepareOkCounter();
+                    logger.debug("uponPrepareOkMessage: Incremented prepareOk counter to {}"
+                            , ps.getPrepareOkCounter());
+                    ps.setHighestPrepareOk(msgSn);
 
-                        ps.resetPrepareOkCounter();
-                        // Increment counter of prepareOks
-                        ps.incrementPrepareOkCounter();
-                        ps.setHighestPrepareOk(msgSn);
-                        ps.setHighestAcceptedValue(new OperationAndId(Operation.fromByteArray(msg.getOp()),
-                                msg.getOpId()));
+                    if(highestAccepted != -1) {
+                        ps.setMaxSnAccept(highestAccepted);
+                        ps.setHighestAcceptedValue(new OperationAndId(Operation.fromByteArray(msg.getOp())
+                                , msg.getOpId()));
                     }
 
-                    if (msgSn == ps.getHighestPrepareOk())
-                        ps.incrementPrepareOkCounter();
-
                 }
-                // If the prepareOk returned bottoms
-                else {
-                    // If we haven't received anything but bottoms
-                    if (ps.getHighestPrepareOk() == -1) {
-                        logger.debug("uponPrepareOkMessage: Another Bottom");
-                        // Increment counter of prepareOks
-                        ps.incrementPrepareOkCounter();
+                // Else if the seqNumber of prepareOk is equal to the one we have and
+                // the accepted sn is not bottom and is higher than the one we have,
+                // we replace the value with the new one
+                else if (msgSn == ps.getHighestPrepareOk()) {
+                    // Reset counter because we changed seqNumber
+                    logger.debug("uponPrepareOkMessage: Same Sn: {}", msgSn);
+                    // Increment counter of prepareOks
+                    ps.incrementPrepareOkCounter();
+                    logger.debug("uponPrepareOkMessage: Incremented prepareOk counter to {}"
+                            , ps.getPrepareOkCounter());
+                    if (highestAccepted > ps.getMaxSnAccept()) {
+                        ps.setMaxSnAccept(highestAccepted);
+                        ps.setHighestAcceptedValue(new OperationAndId(Operation.fromByteArray(msg.getOp())
+                                , msg.getOpId()));
                     }
                 }
 
@@ -168,8 +175,9 @@ public class PaxosAgreement extends GenericProtocol {
                     logger.debug("uponPrepareOkMessage: Got PrepareOk majority");
                     ps.setPrepareOkMajority(true);
 
-                    // If highest prepare is -1, then our seqNumber was the winner
-                    if (ps.getHighestPrepareOk() == -1) {
+                    // If highest accepted value is null, then our seqNumber was the winner
+                    // and we choose our initial proposed value
+                    if (ps.getHighestAcceptedValue() == null) {
                         ps.setHighestAcceptedValue(ps.getInitialProposal());
                         logger.debug("uponPrepareOkMessage: Sending my Proposal");
                     }
@@ -388,7 +396,9 @@ public class PaxosAgreement extends GenericProtocol {
             logger.debug("PaxosTimer Timeout with id: {}", timerId);
             // Increasing seqNumber
             ps.increaseSn();
+            ps.resetPrepareOkCounter();
             ps.setPrepareOkMajority(false);
+            ps.resetAcceptOkCounter();
             ps.setAcceptOkMajority(false);
             List<Host> membership = ps.getMembership();
             membership.forEach(h -> sendMessage(new PrepareMessage(ps.getSn(), instance), h));
