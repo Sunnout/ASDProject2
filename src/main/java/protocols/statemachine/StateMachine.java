@@ -159,11 +159,11 @@ public class StateMachine extends GenericProtocol {
 
     private void uponOrderRequest(OrderRequest request, short sourceProto) {
         try {
-            logger.debug("uponOrderRequest: Received request: " + request);
+            logger.debug("Received request: " + request);
 
             // If I am active and have not proposed anything in this instance, propose the value
             if (state == State.ACTIVE && pendingOps.size() == 0) {
-                logger.debug("uponOrderRequest: proposed {} in instance {}", request.getOpId(), currentInstance);
+                logger.debug("Proposed {} in instance {}", request.getOpId(), currentInstance);
                 sendRequest(new ProposeRequest(currentInstance, request.getOpId(), request.getOperation()),
                         PaxosAgreement.PROTOCOL_ID);
             }
@@ -187,7 +187,7 @@ public class StateMachine extends GenericProtocol {
 
     private void uponDecidedNotification(DecidedNotification notification, short sourceProto) {
         try {
-            logger.debug("uponDecidedNotification: Received notification: " + notification);
+            logger.debug("Decided {} in instance {}", notification.getOpId(), notification.getInstance());
             Operation op = Operation.fromByteArray(notification.getOperation());
             int instance = notification.getInstance();
 
@@ -201,7 +201,7 @@ public class StateMachine extends GenericProtocol {
                     pendingOps.remove(0);
             }
 
-            logger.debug("uponDecidedNotification: Decision was mine? {}", isMyOp);
+            logger.debug("Decision was mine in instance {}? {}", currentInstance, isMyOp);
 
             // The decided operation was from the application, so we notify it
             if (op.getOpType() != MEMBERSHIP_OP_TYPE)
@@ -218,7 +218,7 @@ public class StateMachine extends GenericProtocol {
             // If there are pending operations, propose the first one
             if (pendingOps.size() > 0) {
                 OperationAndId opnId = pendingOps.get(0);
-                logger.debug("uponDecidedNotification: proposed {} in instance {}", opnId.getOpId(), currentInstance);
+                logger.debug("Proposed {} in instance {}", opnId.getOpId(), currentInstance);
 
                 sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
                         PaxosAgreement.PROTOCOL_ID);
