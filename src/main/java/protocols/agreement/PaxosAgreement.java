@@ -91,7 +91,6 @@ public class PaxosAgreement extends GenericProtocol {
             int instance = msg.getInstance();
 
             // If the message is not from an instance that has already ended
-            if (instance >= currentInstance) {
                 int msgSn = msg.getSn();
                 PaxosState ps = getPaxosInstance(instance);
                 logger.debug("uponPrepareMessage: MsgSn: {}, MsgInstance: {}", msgSn, instance);
@@ -114,7 +113,7 @@ public class PaxosAgreement extends GenericProtocol {
                         sendMessage(new PrepareOkMessage(instance, null, null, -1, msgSn), host);
                     }
                 }
-            }
+            
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -203,7 +202,6 @@ public class PaxosAgreement extends GenericProtocol {
             int instance = msg.getInstance();
 
             // If the message is not from an instance that has already ended
-            if (instance >= currentInstance) {
                 int msgSn = msg.getSn();
                 PaxosState ps = getPaxosInstance(instance);
                 logger.debug("uponAcceptMessage: MsgSn: {}, MsgInstance: {}", msgSn, instance);
@@ -223,7 +221,7 @@ public class PaxosAgreement extends GenericProtocol {
                     }
                     logger.debug("uponAcceptMessage: Sent AcceptOkMessages");
                 }
-            }
+
 
         } catch (Exception e) {
             e.printStackTrace();
