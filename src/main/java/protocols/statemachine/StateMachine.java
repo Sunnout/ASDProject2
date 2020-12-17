@@ -4,6 +4,7 @@ import protocols.agreement.PaxosAgreement;
 import protocols.agreement.notifications.JoinedNotification;
 import protocols.agreement.requests.AddReplicaRequest;
 import protocols.agreement.requests.SameReplicasRequest;
+import protocols.app.HashApp;
 import protocols.app.requests.CurrentStateReply;
 import protocols.app.requests.CurrentStateRequest;
 import protocols.app.requests.InstallStateRequest;
@@ -184,8 +185,10 @@ public class StateMachine extends GenericProtocol {
     private void uponCurrentStateReply(CurrentStateReply reply, short sourceProto) {
         int instance = reply.getInstance();
         Host h = replicasToSendState.remove(instance);
-        if (h != null)
+        if (h != null) {
+            logger.debug("Sending membership: {} to {} in instance {}", membership, h, instance);
             sendMessage(new AddReplicaReply(instance, reply.getState(), membership), h);
+        }
     }
 
     /*--------------------------------- Notifications ---------------------------------------- */
@@ -212,7 +215,7 @@ public class StateMachine extends GenericProtocol {
             if (op.getOpType() != MEMBERSHIP_OP_TYPE) {
                 triggerNotification(new ExecuteNotification(notification.getOpId(),
                         notification.getOperation()));
-                sendRequest(new SameReplicasRequest(instance + 1), sourceProto);
+                sendRequest(new SameReplicasRequest(instance + 1), PaxosAgreement.PROTOCOL_ID);
             }
 
             // The decided operation was from the membership
@@ -261,17 +264,16 @@ public class StateMachine extends GenericProtocol {
     private void uponAddReplicaReply(AddReplicaReply msg, Host host, short sourceProto, int channelId) {
         logger.info("Trying to Add replica {}",host);
         // Request state installation from App
-        sendRequest(new InstallStateRequest(msg.getState()), sourceProto);
+        sendRequest(new InstallStateRequest(msg.getState()), HashApp.PROTO_ID);
         // Initialize this node
-        currentInstance = msg.getInstance();
+        currentInstance = msg.getInstance() + 1;
         membership = msg.getMembership();
         // Open connection to membership
         for(Host h : membership)
             openConnection(h);
         state = State.ACTIVE;
-        // TODO: maybe create Install State Reply??
         // Assuming that state was successfully installed
-        triggerNotification(new JoinedNotification(membership, 0));
+        triggerNotification(new JoinedNotification(membership, currentInstance));
     }
 
     /* --------------------------------- TCPChannel Events ---------------------------- */
@@ -318,14 +320,14 @@ public class StateMachine extends GenericProtocol {
             if (isMyOp) {
                 logger.debug("Sending request for state of instance {} ", instance);
                 replicasToSendState.put(instance, h);
-                sendRequest(new CurrentStateRequest(instance), sourceProto);
+                sendRequest(new CurrentStateRequest(instance + 1), HashApp.PROTO_ID);
             }
 
             membership.add(h);
             openConnection(h);
 
             // Warn Paxos that a replica joined the system in an instance
-            sendRequest(new AddReplicaRequest(instance, h), sourceProto);
+            sendRequest(new AddReplicaRequest(instance + 1, h), PaxosAgreement.PROTOCOL_ID);
 
         }
         // Operation to remove host from membership
@@ -333,7 +335,7 @@ public class StateMachine extends GenericProtocol {
             logger.debug("Membership Operation to remove {} in instance {}", h, instance);
             membership.remove(h);
             closeConnection(h);
-            sendRequest(new RemoveReplicaRequest(instance, h), sourceProto);
+            sendRequest(new RemoveReplicaRequest(instance, h), PaxosAgreement.PROTOCOL_ID);
         }
     }
 

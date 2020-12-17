@@ -85,7 +85,7 @@ public class PaxosAgreement extends GenericProtocol {
             registerMessageHandler(cId, PrepareOkMessage.MSG_ID, this::uponPrepareOkMessage, this::uponMsgFail);
             registerMessageHandler(cId, AcceptMessage.MSG_ID, this::uponAcceptMessage, this::uponMsgFail);
             registerMessageHandler(cId, AcceptOkMessage.MSG_ID, this::uponAcceptOkMessage, this::uponMsgFail);
-            registerMessageHandler(cId, DecidedMessage.MSG_ID , this::uponDecidedMessage, this::uponMsgFail);
+            registerMessageHandler(cId, DecidedMessage.MSG_ID, this::uponDecidedMessage, this::uponMsgFail);
 
         } catch (HandlerRegistrationException e) {
             throw new AssertionError("Error registering message handler.", e);
@@ -96,35 +96,21 @@ public class PaxosAgreement extends GenericProtocol {
     /*--------------------------------- Messages ---------------------------------------- */
 
 
-    private void uponDecidedMessage(DecidedMessage msg, Host host, short sourceProto, int channelId){
+    private void uponDecidedMessage(DecidedMessage msg, Host host, short sourceProto, int channelId) {
         try {
-            logger.debug("Im in Decided Message");
             OperationAndId opnId = new OperationAndId(Operation.fromByteArray(msg.getOp()), msg.getOpId());
             int instance = msg.getInstance();
             PaxosState ps = getPaxosInstance(currentInstance);
 
-            if(currentInstance == instance && ps.isMembershipOk()) {
+            if (currentInstance == instance && ps.isMembershipOk()) {
                 logger.debug("Decided {} in instance {}", opnId.getOpId(), instance);
                 triggerNotification(new DecidedNotification(instance, opnId.getOpId(),
                         opnId.getOperation().toByteArray()));
                 cancelTimer(ps.getPaxosTimer());
 
                 currentInstance++;
-
-                // Execute all pending decisions for next instances, if there are any
-                ps = getPaxosInstance(currentInstance);
-
-                opnId = ps.getToDecide();
-                while (opnId != null) {
-                    logger.debug("Decided {} in instance {}", opnId.getOpId(), instance);
-                    triggerNotification(new DecidedNotification(currentInstance++,
-                            opnId.getOpId(), opnId.getOperation().toByteArray()));
-                    ps = getPaxosInstance(currentInstance);
-                    opnId = ps.getToDecide();
-                }
             }
-        }
-        catch (Exception e){
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -135,12 +121,16 @@ public class PaxosAgreement extends GenericProtocol {
             int msgSn = msg.getSn();
             PaxosState ps = getPaxosInstance(instance);
             // If the message is not from an instance that has already ended
-            if(instance >= currentInstance) {
+            if (instance >= currentInstance) {
                 logger.debug("Received prepare with sn {} in instance {}", msgSn, instance);
 
                 // If seqNumber of prepare is higher than our highest prepare, send prepareOk
                 if (msgSn > ps.getHighestPrepare()) {
                     ps.setHighestPrepare(msgSn);
+
+                    // If we are not joined, respond only to the sender
+                    if (currentInstance == -1)
+                        openConnection(host);
 
                     int highestAccepted = ps.getHighestAccept();
                     // If we have accepted something, send highest accepted seqNumber and value
@@ -156,10 +146,9 @@ public class PaxosAgreement extends GenericProtocol {
                         sendMessage(new PrepareOkMessage(instance, null, null, -1, msgSn), host);
                     }
                 }
-            }
-            else {
+            } else {
                 logger.debug("Sending previous decision for instance {} currentInstance {} To Host {}"
-                        ,instance,currentInstance,host);
+                        , instance, currentInstance, host);
                 OperationAndId opnId = ps.getHighestLearnedValue();
                 sendMessage(new DecidedMessage(instance, opnId.getOpId(),
                         opnId.getOperation().toByteArray()), host);
@@ -251,7 +240,7 @@ public class PaxosAgreement extends GenericProtocol {
             int msgSn = msg.getSn();
             PaxosState ps = getPaxosInstance(instance);
             // If the message is not from an instance that has already ended
-            if(instance >= currentInstance) {
+            if (instance >= currentInstance) {
                 logger.debug("Received accept with sn {} in instance {}", msgSn, instance);
 
                 // If seqNumber of accept is equal or higher than our highest prepare
@@ -262,16 +251,24 @@ public class PaxosAgreement extends GenericProtocol {
                             msg.getOpId());
                     ps.setHighestAcceptedValue(opnId);
 
-                    logger.debug("Sent AcceptOkMessages for {} in instance {}", opnId.getOpId(), instance);
-                    // Send acceptOk with that seqNumber and value to all learners
-                    for (Host h : ps.getMembership()) {
+
+                    // If we are not joined, respond only to the sender
+                    if (currentInstance == -1) {
+                        logger.debug("Sent AcceptOkMessage for {}", host);
+                        openConnection(host);
                         sendMessage(new AcceptOkMessage(instance, opnId.getOpId(),
-                                opnId.getOperation().toByteArray(), msgSn), h);
+                                opnId.getOperation().toByteArray(), msgSn), host);
+                    } else {
+                        logger.debug("Sent AcceptOkMessages for {} in instance {}", opnId.getOpId(), instance);
+                        // Send acceptOk with that seqNumber and value to all learners
+                        for (Host h : ps.getMembership()) {
+                            sendMessage(new AcceptOkMessage(instance, opnId.getOpId(),
+                                    opnId.getOperation().toByteArray(), msgSn), h);
+                        }
                     }
                 }
-            }
-            else{
-                logger.debug("Sending previous decision for instance {}",instance);
+            } else {
+                logger.debug("Sending previous decision for instance {}", instance);
                 OperationAndId opnId = ps.getHighestLearnedValue();
                 sendMessage(new DecidedMessage(instance, opnId.getOpId(),
                         opnId.getOperation().toByteArray()), host);
@@ -350,8 +347,6 @@ public class PaxosAgreement extends GenericProtocol {
             currentInstance = notification.getJoinInstance();
             joinedInstance = currentInstance;
             PaxosState ps = getPaxosInstance(currentInstance);
-            logger.info("Agreement starting at instance {},  membership: {}",
-                    currentInstance, ps.getMembership());
 
             // Initialize membership and open connections
             for (Host h : notification.getMembership()) {
@@ -359,6 +354,9 @@ public class PaxosAgreement extends GenericProtocol {
                 openConnection(h);
             }
             ps.setMembershipOk();
+
+            logger.info("Agreement starting at instance {},  membership: {}",
+                    currentInstance, ps.getMembership());
 
             // If we decided a value before joining, send acceptOk and trigger decide
 
@@ -388,7 +386,7 @@ public class PaxosAgreement extends GenericProtocol {
     }
 
     private void uponAddReplicaRequest(AddReplicaRequest request, short sourceProto) {
-        logger.debug("Add replica in instance ", request.getInstance());
+        logger.debug("Add replica {} in instance {}", request.getReplica(), request.getInstance());
         Host replica = request.getReplica();
         int instance = request.getInstance();
         PaxosState ps = getPaxosInstance(instance);
@@ -403,7 +401,7 @@ public class PaxosAgreement extends GenericProtocol {
     }
 
     private void uponRemoveReplicaRequest(RemoveReplicaRequest request, short sourceProto) {
-        logger.debug("Remove replica in instance ", request.getInstance());
+        logger.debug("Remove replica {} in instance {}", request.getReplica(), request.getInstance());
         Host replica = request.getReplica();
         int instance = request.getInstance();
         PaxosState ps = getPaxosInstance(request.getInstance());
@@ -490,7 +488,7 @@ public class PaxosAgreement extends GenericProtocol {
         }
     }
 
-    private void usePreviousMembership(int instance){
+    private void usePreviousMembership(int instance) {
         PaxosState ps = getPaxosInstance(instance);
         logger.debug("Getting previous membership for instance {}", instance);
 
@@ -504,12 +502,13 @@ public class PaxosAgreement extends GenericProtocol {
         logger.debug("New membership: {}", ps.getMembership());
     }
 
-    private void canDecide(int instance){
+    private void canDecide(int instance) {
         try {
             PaxosState ps = getPaxosInstance(instance);
             if (ps.getNumberOfAcceptOks() >= ps.getQuorumSize()) {
                 OperationAndId opnId = ps.getHighestLearnedValue();
                 ps.setToDecide(opnId);
+                
                 for (Host h : ps.getMembership()) {
                     sendMessage(new AcceptOkMessage(instance, opnId.getOpId(),
                             opnId.getOperation().toByteArray(), ps.getHighestAccept()), h);
@@ -519,7 +518,7 @@ public class PaxosAgreement extends GenericProtocol {
                         opnId.getOpId(), opnId.getOperation().toByteArray()));
             }
 
-        } catch(Exception e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
