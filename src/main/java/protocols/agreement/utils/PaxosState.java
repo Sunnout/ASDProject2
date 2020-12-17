@@ -3,10 +3,7 @@ package protocols.agreement.utils;
 import protocols.statemachine.utils.OperationAndId;
 import pt.unl.fct.di.novasys.network.data.Host;
 
-import java.util.Collections;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 
 public class PaxosState {
 
@@ -20,10 +17,10 @@ public class PaxosState {
 
     private int highestAccept; // Highest accepted seqNumber
     private OperationAndId highestAcceptedValue; // Highest accepted value
-    private int acceptOkCounter; // Number of acceptOks for the same seqNumber
 
     private int highestLearned; // Highest learned seqNumber
     private OperationAndId highestLearnedValue; // Highest learned value
+    private Set<Host> haveAccepted; // set of hosts who have sent acceptOks
 
     private int maxSnAccept; // Biggest seqNumber of accepted value in prepareOk
 
@@ -48,7 +45,7 @@ public class PaxosState {
         this.prepareOkCounter = 0;
         this.highestAccept = -1;
         this.highestAcceptedValue = null;
-        this.acceptOkCounter = 0;
+        this.haveAccepted = new HashSet<>();
         this.highestLearned = -1;
         this.highestLearnedValue = null;
         this.maxSnAccept = -1;
@@ -183,17 +180,15 @@ public class PaxosState {
             this.highestSeenSn = this.maxSnAccept;
     }
 
-    public int getAcceptOkCounter() {
-        return acceptOkCounter;
-    }
-
-    public void resetAcceptOkCounter() {
-        this.acceptOkCounter = 0;
-    }
-
-    public void incrementAcceptOkCounter() {
-        this.acceptOkCounter += 1;
-    }
+   public void addHostToHaveAccepted(Host h){
+        haveAccepted.add(h);
+   }
+   public void resetHaveAccepted(){
+        haveAccepted.clear();
+   }
+   public boolean hasAcceptOkQuorum(){
+        return haveAccepted.size() == getQuorumSize();
+   }
 
     public OperationAndId getToDecide() {
         return toDecide;

@@ -238,19 +238,19 @@ public class PaxosAgreement extends GenericProtocol {
                 // Update learned value and reset counter if the seqNumber is higher
                 if (msgHighestAccept > highestLearned) {
                     logger.debug("Received Higher AcceptOk, changing from {} to {}", highestLearned, msgHighestAccept);
-                    ps.resetAcceptOkCounter();
-                    ps.incrementAcceptOkCounter();
+                    ps.resetHaveAccepted();
+                    ps.addHostToHaveAccepted(host);
                     ps.setHighestLearned(msgHighestAccept);
                     ps.setHighestLearnedValue(new OperationAndId(Operation.fromByteArray(msg.getOp()),
                             msg.getOpId()));
 
                 } else if (msgHighestAccept == highestLearned) {
                     logger.debug("Increment AcceptOk Counter in instance {}", instance);
-                    ps.incrementAcceptOkCounter();
+                    ps.addHostToHaveAccepted(host);
                 }
 
                 // If majority quorum was achieved
-                if (ps.getAcceptOkCounter() >= ps.getQuorumSize()) {
+                if (ps.hasAcceptOkQuorum()) {
                     logger.debug("List size: {}", ps.getMembership().size());
                     logger.debug("Got AcceptOk majority for instance {}", instance);                    ps.setAcceptOkMajority(true);
 
@@ -389,7 +389,7 @@ public class PaxosAgreement extends GenericProtocol {
             ps.increaseSn();
             ps.resetPrepareOkCounter();
             ps.setPrepareOkMajority(false);
-            ps.resetAcceptOkCounter();
+            ps.resetHaveAccepted();
             ps.setAcceptOkMajority(false);
             List<Host> membership = ps.getMembership();
             membership.forEach(h -> sendMessage(new PrepareMessage(ps.getSn(), instance), h));
