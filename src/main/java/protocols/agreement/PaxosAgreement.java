@@ -101,12 +101,14 @@ public class PaxosAgreement extends GenericProtocol {
             logger.debug("Im in Decided Message");
             OperationAndId opnId = new OperationAndId(Operation.fromByteArray(msg.getOp()), msg.getOpId());
             int instance = msg.getInstance();
-            if(currentInstance == instance) {
+            PaxosState ps = getPaxosInstance(currentInstance);
+
+            if(currentInstance == instance && ps.isMembershipOk()) {
                 logger.debug("Decided {} in instance {}", opnId.getOpId(), instance);
                 triggerNotification(new DecidedNotification(instance, opnId.getOpId(),
                         opnId.getOperation().toByteArray()));
-                PaxosState ps = getPaxosInstance(currentInstance);
                 cancelTimer(ps.getPaxosTimer());
+
                 currentInstance++;
 
                 // Execute all pending decisions for next instances, if there are any
@@ -158,7 +160,7 @@ public class PaxosAgreement extends GenericProtocol {
             else {
                 logger.debug("Sending previous decision for instance {} currentInstance {} To Host {}"
                         ,instance,currentInstance,host);
-                OperationAndId opnId = ps.getToDecide();
+                OperationAndId opnId = ps.getHighestLearnedValue();
                 sendMessage(new DecidedMessage(instance, opnId.getOpId(),
                         opnId.getOperation().toByteArray()), host);
             }
@@ -270,7 +272,7 @@ public class PaxosAgreement extends GenericProtocol {
             }
             else{
                 logger.debug("Sending previous decision for instance {}",instance);
-                OperationAndId opnId = ps.getToDecide();
+                OperationAndId opnId = ps.getHighestLearnedValue();
                 sendMessage(new DecidedMessage(instance, opnId.getOpId(),
                         opnId.getOperation().toByteArray()), host);
             }
@@ -307,7 +309,7 @@ public class PaxosAgreement extends GenericProtocol {
                 }
 
                 // If majority quorum was achieved
-                logger.debug("Checking Quorum with Membership: {}",ps.getMembership());
+                logger.debug("Checking Quorum with Membership: {} in instance {}", ps.getMembership(), instance);
                 if (ps.hasAcceptOkQuorum() && ps.getToDecide() == null) {
                     logger.debug("List size: {}", ps.getMembership().size());
                     logger.debug("Got AcceptOk majority for instance {}", instance);
@@ -325,18 +327,6 @@ public class PaxosAgreement extends GenericProtocol {
                                 opnId.getOperation().toByteArray()));
 
                         currentInstance++;
-
-                        // Execute all pending decisions for next instances, if there are any
-                        ps = getPaxosInstance(currentInstance);
-
-                        opnId = ps.getToDecide();
-                        while (opnId != null) {
-                            logger.debug("Decided {} in instance {}", opnId.getOpId(), instance);
-                            triggerNotification(new DecidedNotification(currentInstance++,
-                                    opnId.getOpId(), opnId.getOperation().toByteArray()));
-                            ps = getPaxosInstance(currentInstance);
-                            opnId = ps.getToDecide();
-                        }
                     }
                 }
             }
@@ -372,19 +362,9 @@ public class PaxosAgreement extends GenericProtocol {
 
             // If we decided a value before joining, send acceptOk and trigger decide
 
-            while (ps.getNumberOfAcceptOks() >= ps.getQuorumSize()) {
-                OperationAndId opnId = ps.getHighestLearnedValue();
-                ps.setToDecide(opnId);
-                for (Host h : ps.getMembership()) {
-                    sendMessage(new AcceptOkMessage(currentInstance, opnId.getOpId(),
-                            opnId.getOperation().toByteArray(), ps.getHighestAccept()), h);
-                }
-                triggerNotification(new DecidedNotification(currentInstance++,
-                        opnId.getOpId(), opnId.getOperation().toByteArray()));
-                ps = getPaxosInstance(currentInstance);
-            }
+            canDecide(currentInstance);
 
-        } catch (IOException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
     }
@@ -402,7 +382,6 @@ public class PaxosAgreement extends GenericProtocol {
 
             sendPrepare(instance);
 
-
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -411,23 +390,31 @@ public class PaxosAgreement extends GenericProtocol {
     private void uponAddReplicaRequest(AddReplicaRequest request, short sourceProto) {
         logger.debug("Add replica in instance ", request.getInstance());
         Host replica = request.getReplica();
-        PaxosState ps = getPaxosInstance(request.getInstance());
+        int instance = request.getInstance();
+        PaxosState ps = getPaxosInstance(instance);
         // Adding replica to membership of instance and opening connection
         ps.addReplicaToMembership(replica);
         openConnection(replica);
         // Membership up to date
+        usePreviousMembership(instance);
         ps.setMembershipOk();
+        // If we decided a value before joining, send acceptOk and trigger decide
+        canDecide(instance);
     }
 
     private void uponRemoveReplicaRequest(RemoveReplicaRequest request, short sourceProto) {
         logger.debug("Remove replica in instance ", request.getInstance());
         Host replica = request.getReplica();
+        int instance = request.getInstance();
         PaxosState ps = getPaxosInstance(request.getInstance());
         // Removing replica from membership of instance and closing connection
         ps.removeReplicaFromMembership(replica);
         closeConnection(replica);
         // Membership up to date
+        usePreviousMembership(instance);
         ps.setMembershipOk();
+        // If we decided a value before joining, send acceptOk and trigger decide
+        canDecide(instance);
     }
 
     private void uponSameReplicasRequest(SameReplicasRequest request, short sourceProto) {
@@ -435,7 +422,10 @@ public class PaxosAgreement extends GenericProtocol {
         int instance = request.getInstance();
         PaxosState ps = getPaxosInstance(instance);
         // Membership up to date
+        usePreviousMembership(instance);
         ps.setMembershipOk();
+        // If we decided a value before joining, send acceptOk and trigger decide
+        canDecide(instance);
     }
 
     /*--------------------------------- Timers ---------------------------------------- */
@@ -477,15 +467,9 @@ public class PaxosAgreement extends GenericProtocol {
         return paxosByInstance.get(instance);
     }
 
-
     private void sendPrepare(int instance) {
         PaxosState ps = getPaxosInstance(instance);
         if (ps.isMembershipOk()) {
-            if (joinedInstance != currentInstance) {
-                List<Host> prevMembership = getPaxosInstance(instance - 1).getMembership();
-                for (Host h : prevMembership)
-                    ps.addReplicaToMembership(h);
-            }
             // Generating seqNumber
             ps.generateSn(myself);
 
@@ -498,11 +482,45 @@ public class PaxosAgreement extends GenericProtocol {
             long timerId = setupTimer(new PaxosTimer(instance), 2000);
             ps.setPaxosTimer(timerId);
             logger.debug("New PaxosTimer for instance {}", instance);
+
         } else {
             // Setup MembershipTimer that expires if we don't have membership
+            logger.debug("New MembershipOkTimer for instance {}", instance);
             ps.setPaxosTimer(setupTimer(new MembershipOkTimer(instance), 50));
         }
     }
 
+    private void usePreviousMembership(int instance){
+        PaxosState ps = getPaxosInstance(instance);
+        logger.debug("Getting previous membership for instance {}", instance);
 
+        if (joinedInstance != currentInstance) {
+            List<Host> prevMembership = getPaxosInstance(instance - 1).getMembership();
+            logger.debug("Previous Membership {}", prevMembership);
+            for (Host h : prevMembership)
+                ps.addReplicaToMembership(h);
+        }
+
+        logger.debug("New membership: {}", ps.getMembership());
+    }
+
+    private void canDecide(int instance){
+        try {
+            PaxosState ps = getPaxosInstance(instance);
+            if (ps.getNumberOfAcceptOks() >= ps.getQuorumSize()) {
+                OperationAndId opnId = ps.getHighestLearnedValue();
+                ps.setToDecide(opnId);
+                for (Host h : ps.getMembership()) {
+                    sendMessage(new AcceptOkMessage(instance, opnId.getOpId(),
+                            opnId.getOperation().toByteArray(), ps.getHighestAccept()), h);
+                }
+
+                triggerNotification(new DecidedNotification(currentInstance++,
+                        opnId.getOpId(), opnId.getOperation().toByteArray()));
+            }
+
+        } catch(Exception e) {
+            e.printStackTrace();
+        }
+    }
 }
