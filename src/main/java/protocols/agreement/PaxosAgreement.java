@@ -229,7 +229,7 @@ public class PaxosAgreement extends GenericProtocol {
 
             // If the message is not from an instance that has already ended
             // and we don't have a majority of acceptOks
-            if (instance >= currentInstance && !ps.haveAcceptOkMajority()) {
+            if (instance >= currentInstance ) {
                 logger.debug("Received AcceptOk with sn {} in instance {}", msg.getHighestAccept(), instance);
 
                 int highestLearned = ps.getHighestLearned();
@@ -252,7 +252,7 @@ public class PaxosAgreement extends GenericProtocol {
                 // If majority quorum was achieved
                 if (ps.hasAcceptOkQuorum()) {
                     logger.debug("List size: {}", ps.getMembership().size());
-                    logger.debug("Got AcceptOk majority for instance {}", instance);                    ps.setAcceptOkMajority(true);
+                    logger.debug("Got AcceptOk majority for instance {}", instance);
 
                     // Cancel PaxosTimer for this instance
                     logger.debug("Cancelled PaxosTimer in instance {}", instance);
@@ -260,6 +260,7 @@ public class PaxosAgreement extends GenericProtocol {
 
                     OperationAndId opnId = ps.getHighestLearnedValue();
                     // If the quorum is for the current instance then decide
+                    ps.setToDecide(opnId);
                     if (currentInstance == instance) {
                         logger.debug("Decided {} in instance {}", opnId.getOpId(), instance);
                         triggerNotification(new DecidedNotification(instance, opnId.getOpId(),
@@ -277,12 +278,6 @@ public class PaxosAgreement extends GenericProtocol {
                             ps = getPaxosInstance(currentInstance);
                             opnId = ps.getToDecide();
                         }
-                    }
-                    // If the quorum is not for the current instance or if we haven't
-                    // joined the instance yet, save decision for later
-                    else {
-                        ps.setToDecide(opnId);
-                        logger.debug("Saved operation for future decide.");
                     }
                 }
             }
@@ -383,14 +378,13 @@ public class PaxosAgreement extends GenericProtocol {
         PaxosState ps = getPaxosInstance(instance);
 
         // If we have not decided yet, retry prepare
-        if (!ps.haveAcceptOkMajority()) {
+        if (ps.getToDecide() == null) {
             logger.debug("PaxosTimer Timeout in instance {}", instance);
             // Increasing seqNumber
             ps.increaseSn();
             ps.resetPrepareOkCounter();
             ps.setPrepareOkMajority(false);
             ps.resetHaveAccepted();
-            ps.setAcceptOkMajority(false);
             List<Host> membership = ps.getMembership();
             membership.forEach(h -> sendMessage(new PrepareMessage(ps.getSn(), instance), h));
             logger.debug("Retry sending to: {} in instance {}", membership, instance);
