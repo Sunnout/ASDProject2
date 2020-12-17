@@ -185,6 +185,8 @@ public class StateMachine extends GenericProtocol {
     private void uponCurrentStateReply(CurrentStateReply reply, short sourceProto) {
         int instance = reply.getInstance();
         Host h = replicasToSendState.remove(instance);
+        logger.debug("Current state reply, send to {} in instance {}",h,instance);
+
         if (h != null) {
             logger.debug("Sending membership: {} to {} in instance {}", membership, h, instance);
             sendMessage(new AddReplicaReply(instance, reply.getState(), membership), h);
@@ -273,6 +275,7 @@ public class StateMachine extends GenericProtocol {
             openConnection(h);
         state = State.ACTIVE;
         // Assuming that state was successfully installed
+        logger.debug("Joined notification in instance {}",currentInstance);
         triggerNotification(new JoinedNotification(membership, currentInstance));
     }
 
@@ -310,8 +313,9 @@ public class StateMachine extends GenericProtocol {
     /* --------------------------------- Procedures ---------------------------- */
 
     private void processMembershipChange(Operation op, boolean isMyOp, int instance, short sourceProto) throws IOException {
-        logger.debug("Processing Membership Operation");
         Host h = hostFromByteArray(op.getData());
+        logger.debug("Processing Membership Operation with host {}",h);
+
 
         // Operation to add host to membership
         if (op.getKey().equals(ADD_REPLICA)) {
@@ -319,7 +323,7 @@ public class StateMachine extends GenericProtocol {
             // Add this host to the list to send state and request state from App
             if (isMyOp) {
                 logger.debug("Sending request for state of instance {} ", instance);
-                replicasToSendState.put(instance, h);
+                replicasToSendState.put(instance +1, h);
                 sendRequest(new CurrentStateRequest(instance + 1), HashApp.PROTO_ID);
             }
 
@@ -328,6 +332,7 @@ public class StateMachine extends GenericProtocol {
 
             // Warn Paxos that a replica joined the system in an instance
             sendRequest(new AddReplicaRequest(instance + 1, h), PaxosAgreement.PROTOCOL_ID);
+
 
         }
         // Operation to remove host from membership
