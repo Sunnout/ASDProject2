@@ -137,11 +137,14 @@ public class StateMachine extends GenericProtocol {
             }
             initialMembership.add(h);
         }
+        logger.info("My initial membership {} ", initialMembership);
+
 
         if (initialMembership.contains(self)) {
             state = State.ACTIVE;
             logger.info("Starting in ACTIVE as I am part of initial membership");
             //I'm part of the initial membership, so I'm assuming the system is bootstrapping
+            logger.info("My initial membership {} ", initialMembership);
             membership = new LinkedList<>(initialMembership);
             membership.forEach(this::openConnection);
             triggerNotification(new JoinedNotification(membership, 0));
@@ -151,8 +154,9 @@ public class StateMachine extends GenericProtocol {
             logger.info("Starting in JOINING as I am not part of initial membership");
             Random r = new Random();
             // Create connection to random node in membership
-            Host toContact = membership.get(r.nextInt(initialMembership.size()));
+            Host toContact = initialMembership.get(r.nextInt(initialMembership.size()));
             openConnection(toContact);
+            membership = new LinkedList<>();
         }
     }
 
@@ -239,9 +243,15 @@ public class StateMachine extends GenericProtocol {
 
     private void uponAddReplicaMsg(AddReplicaMessage msg, Host host, short sourceProto, int channelId) {
         try {
+            logger.debug("Received Add replica msg from {}", host);
             // TODO: passamos host em bytes
             Operation op = new Operation(MEMBERSHIP_OP_TYPE, ADD_REPLICA, hostToByteArray(host));
             pendingOps.add(new OperationAndId(op, UUID.randomUUID()));
+            if(pendingOps.size() == 1){
+                OperationAndId opnId  = pendingOps.get(0);
+                sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
+                        PaxosAgreement.PROTOCOL_ID);
+            }
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -249,6 +259,7 @@ public class StateMachine extends GenericProtocol {
     }
 
     private void uponAddReplicaReply(AddReplicaReply msg, Host host, short sourceProto, int channelId) {
+        logger.info("Trying to Add replica {}",host);
         // Request state installation from App
         sendRequest(new InstallStateRequest(msg.getState()), sourceProto);
         // Initialize this node
@@ -297,12 +308,15 @@ public class StateMachine extends GenericProtocol {
     /* --------------------------------- Procedures ---------------------------- */
 
     private void processMembershipChange(Operation op, boolean isMyOp, int instance, short sourceProto) throws IOException {
+        logger.debug("Processing Membership Operation");
         Host h = hostFromByteArray(op.getData());
 
         // Operation to add host to membership
         if (op.getKey().equals(ADD_REPLICA)) {
+            logger.debug("Membership Operation to add {} in instance {}", h, instance);
             // Add this host to the list to send state and request state from App
             if (isMyOp) {
+                logger.debug("Sending request for state of instance {} ", instance);
                 replicasToSendState.put(instance, h);
                 sendRequest(new CurrentStateRequest(instance), sourceProto);
             }
@@ -316,6 +330,7 @@ public class StateMachine extends GenericProtocol {
         }
         // Operation to remove host from membership
         else {
+            logger.debug("Membership Operation to remove {} in instance {}", h, instance);
             membership.remove(h);
             closeConnection(h);
             sendRequest(new RemoveReplicaRequest(instance, h), sourceProto);
