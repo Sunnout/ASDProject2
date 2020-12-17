@@ -309,9 +309,13 @@ public class PaxosAgreement extends GenericProtocol {
                 openConnection(h);
             }
 
-            // If we decided a value before joining, trigger the decide
+            // If we decided a value before joining, send acceptOk and trigger decide
             OperationAndId opnId = ps.getToDecide();
             while (opnId != null) {
+                for (Host h : ps.getMembership()) {
+                    sendMessage(new AcceptOkMessage(currentInstance, opnId.getOpId(),
+                            opnId.getOperation().toByteArray(), ps.getHighestAccept()), h);
+                }
                 triggerNotification(new DecidedNotification(currentInstance++,
                         opnId.getOpId(), opnId.getOperation().toByteArray()));
                 ps = getPaxosInstance(currentInstance);

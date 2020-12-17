@@ -189,7 +189,7 @@ public class PaxosState {
             return false;
         return haveAccepted.size() == getQuorumSize();
    }
-   
+
 
     public OperationAndId getToDecide() {
         return toDecide;
