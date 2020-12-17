@@ -3,6 +3,7 @@ package protocols.statemachine;
 import protocols.agreement.PaxosAgreement;
 import protocols.agreement.notifications.JoinedNotification;
 import protocols.agreement.requests.AddReplicaRequest;
+import protocols.agreement.requests.SameReplicasRequest;
 import protocols.app.requests.CurrentStateReply;
 import protocols.app.requests.CurrentStateRequest;
 import protocols.app.requests.InstallStateRequest;
@@ -204,9 +205,11 @@ public class StateMachine extends GenericProtocol {
             logger.debug("Decision was mine in instance {}? {}", currentInstance, isMyOp);
 
             // The decided operation was from the application, so we notify it
-            if (op.getOpType() != MEMBERSHIP_OP_TYPE)
+            if (op.getOpType() != MEMBERSHIP_OP_TYPE) {
                 triggerNotification(new ExecuteNotification(notification.getOpId(),
                         notification.getOperation()));
+                sendRequest(new SameReplicasRequest(instance + 1), sourceProto);
+            }
 
             // The decided operation was from the membership
             else

@@ -34,6 +34,8 @@ public class PaxosState {
 
     private boolean prepareOkMajority;
 
+    private boolean isMembershipOk;
+
 
     public PaxosState() {
         this.sn = -1;
@@ -53,6 +55,7 @@ public class PaxosState {
         this.toDecide = null;
         this.paxosTimer = -1;
         this.prepareOkMajority = false;
+        this.isMembershipOk = false;
     }
 
     public int getSn() {
@@ -189,7 +192,9 @@ public class PaxosState {
             return false;
         return haveAccepted.size() == getQuorumSize();
    }
-
+   public int getNumberOfAcceptOks(){
+        return haveAccepted.size();
+   }
 
     public OperationAndId getToDecide() {
         return toDecide;
@@ -212,6 +217,14 @@ public class PaxosState {
 
     public void setPrepareOkMajority(boolean prepareOkMajority) {
         this.prepareOkMajority = prepareOkMajority;
+    }
+
+    public boolean isMembershipOk() {
+        return isMembershipOk;
+    }
+
+    public void setMembershipOk() {
+        this.isMembershipOk = true;
     }
 
 }
