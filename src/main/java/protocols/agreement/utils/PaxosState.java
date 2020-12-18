@@ -113,8 +113,8 @@ public class PaxosState {
 
     public void setHighestPrepareOk(int highestPrepareOk) {
         this.highestPrepareOk = highestPrepareOk;
-        if(this.highestPrepareOk > highestSeenSeqNumber)
-            this.highestSeenSeqNumber = this.highestPrepareOk;
+        if(this.highestPrepareOk > highestSeenSn)
+            this.highestSeenSn = this.highestPrepareOk;
     }
 
     public OperationAndId getInitialProposal() {
