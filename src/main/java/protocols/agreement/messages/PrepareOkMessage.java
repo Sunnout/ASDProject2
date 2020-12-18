@@ -15,7 +15,7 @@ public class PrepareOkMessage  extends ProtoMessage {
     private final byte[] op;
     private final int highestAccepted;
     private final int sn;
-    // TODO meter aqui o nosso seqNumber atual
+
 
     public PrepareOkMessage(int instance, UUID opId, byte[] op, int highestAccepted, int sn) {
         super(MSG_ID);

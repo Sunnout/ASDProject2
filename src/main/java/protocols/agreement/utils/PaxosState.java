@@ -3,10 +3,7 @@ package protocols.agreement.utils;
 import protocols.statemachine.utils.OperationAndId;
 import pt.unl.fct.di.novasys.network.data.Host;
 
-import java.util.Collections;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Random;
+import java.util.*;
 
 public class PaxosState {
 
@@ -20,12 +17,14 @@ public class PaxosState {
 
     private int highestAccept; // Highest accepted seqNumber
     private OperationAndId highestAcceptedValue; // Highest accepted value
-    private int acceptOkCounter; // Number of acceptOks for the same seqNumber
 
     private int highestLearned; // Highest learned seqNumber
     private OperationAndId highestLearnedValue; // Highest learned value
+    private Set<Host> haveAccepted; // set of hosts who have sent acceptOks
 
-    private int highestSeenSeqNumber; // Highest seen seqNumber
+    private int maxSnAccept; // Biggest seqNumber of accepted value in prepareOk
+
+    private int highestSeenSn; // Highest seen seqNumber
 
     private Host replicaToRemove; // Host to remove
 
@@ -34,7 +33,9 @@ public class PaxosState {
     private long paxosTimer; // Id of prepareOkTimer
 
     private boolean prepareOkMajority;
-    private boolean acceptOkMajority;
+
+    private boolean isMembershipOk;
+
 
     public PaxosState() {
         this.sn = -1;
@@ -45,15 +46,16 @@ public class PaxosState {
         this.prepareOkCounter = 0;
         this.highestAccept = -1;
         this.highestAcceptedValue = null;
-        this.acceptOkCounter = 0;
+        this.haveAccepted = new HashSet<>();
         this.highestLearned = -1;
         this.highestLearnedValue = null;
-        this.highestSeenSeqNumber = -1;
+        this.maxSnAccept = -1;
+        this.highestSeenSn = -1;
         this.replicaToRemove = null;
         this.toDecide = null;
         this.paxosTimer = -1;
         this.prepareOkMajority = false;
-        this.acceptOkMajority = false;
+        this.isMembershipOk = false;
     }
 
     public int getSn() {
@@ -62,7 +64,7 @@ public class PaxosState {
 
     public void generateSn(Host myself) {
         Collections.sort(membership, new HostComparator());
-        this.sn = membership.indexOf(myself);
+        this.sn = membership.indexOf(myself) + 1;
     }
 
     public void increaseSn() {
@@ -70,7 +72,7 @@ public class PaxosState {
         do {
             int multiplier = r.nextInt(5) + 1;
             this.sn += multiplier * getMembershipSize();
-        } while(this.sn < this.highestSeenSeqNumber);
+        } while(this.sn < this.highestSeenSn);
     }
 
     public List<Host> getMembership() {
@@ -101,8 +103,8 @@ public class PaxosState {
 
     public void setHighestPrepare(int highestPrepare) {
         this.highestPrepare = highestPrepare;
-        if(this.highestPrepare > highestSeenSeqNumber)
-            this.highestSeenSeqNumber = this.highestPrepare;
+        if(this.highestPrepare > this.highestSeenSn)
+            this.highestSeenSn = this.highestPrepare;
     }
 
     public int getHighestPrepareOk() {
@@ -141,8 +143,8 @@ public class PaxosState {
 
     public void setHighestAccept(int highestAccept) {
         this.highestAccept = highestAccept;
-        if(this.highestAccept > highestSeenSeqNumber)
-            this.highestSeenSeqNumber = this.highestAccept;
+        if(this.highestAccept > this.highestSeenSn)
+            this.highestSeenSn = this.highestAccept;
     }
 
     public OperationAndId getHighestAcceptedValue() {
@@ -159,8 +161,8 @@ public class PaxosState {
 
     public void setHighestLearned(int highestLearned) {
         this.highestLearned = highestLearned;
-        if(this.highestLearned > highestSeenSeqNumber)
-            this.highestSeenSeqNumber = this.highestLearned;
+        if(this.highestLearned > this.highestSeenSn)
+            this.highestSeenSn = this.highestLearned;
     }
 
     public OperationAndId getHighestLearnedValue() {
@@ -171,17 +173,30 @@ public class PaxosState {
         this.highestLearnedValue = highestLearnedValue;
     }
 
-    public int getAcceptOkCounter() {
-        return acceptOkCounter;
+    public int getMaxSnAccept() {
+        return maxSnAccept;
     }
 
-    public void resetAcceptOkCounter() {
-        this.acceptOkCounter = 0;
+    public void setMaxSnAccept(int maxSnAccept) {
+        this.maxSnAccept = maxSnAccept;
+        if(this.maxSnAccept > this.highestSeenSn)
+            this.highestSeenSn = this.maxSnAccept;
     }
 
-    public void incrementAcceptOkCounter() {
-        this.acceptOkCounter += 1;
-    }
+   public void addHostToHaveAccepted(Host h){
+        haveAccepted.add(h);
+   }
+   public void resetHaveAccepted(){
+        haveAccepted.clear();
+   }
+   public boolean hasAcceptOkQuorum(){
+        if(membership.size() == 0)
+            return false;
+        return haveAccepted.size() == getQuorumSize();
+   }
+   public int getNumberOfAcceptOks(){
+        return haveAccepted.size();
+   }
 
     public OperationAndId getToDecide() {
         return toDecide;
@@ -206,11 +221,12 @@ public class PaxosState {
         this.prepareOkMajority = prepareOkMajority;
     }
 
-    public boolean haveAcceptOkMajority() {
-        return acceptOkMajority;
+    public boolean isMembershipOk() {
+        return isMembershipOk;
     }
 
-    public void setAcceptOkMajority(boolean acceptOkMajority) {
-        this.acceptOkMajority = acceptOkMajority;
+    public void setMembershipOk() {
+        this.isMembershipOk = true;
     }
+
 }

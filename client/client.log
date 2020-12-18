@@ -1,4 +1,11 @@
+<<<<<<< HEAD
 2020-12-11 17:53:00:931 0 sec: 0 operations; est completion in 0 second 
 2020-12-11 17:53:05:820 5 sec: 0 operations; est completion in 106751991167300 days 15 hours 
 2020-12-11 17:53:10:819 10 sec: 0 operations; est completion in 106751991167300 days 15 hours 
 2020-12-11 17:53:15:820 15 sec: 0 operations; est completion in 106751991167300 days 15 hours 
+=======
+2020-12-17 19:33:49:360 0 sec: 0 operations; est completion in 0 second 
+2020-12-17 19:33:54:197 5 sec: 0 operations; est completion in 106751991167300 days 15 hours 
+2020-12-17 19:33:59:196 10 sec: 7 operations; 1.4 current ops/sec; est completion in 1 day 15 hours [READ AverageLatency(us)=1139347] [UPDATE AverageLatency(us)=581994.8] 
+2020-12-17 19:34:04:196 15 sec: 9 operations; 0.4 current ops/sec; est completion in 1 day 22 hours [READ AverageLatency(us)=2080197]  
+>>>>>>> sirPaxos
