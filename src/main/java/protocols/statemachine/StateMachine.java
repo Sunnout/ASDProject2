@@ -10,7 +10,8 @@ import protocols.app.requests.CurrentStateRequest;
 import protocols.app.requests.InstallStateRequest;
 import protocols.statemachine.messages.AddReplicaReply;
 import protocols.statemachine.messages.AddReplicaMessage;
-import protocols.statemachine.requests.RemoveReplicaRequest;
+import protocols.agreement.requests.RemoveReplicaRequest;
+import protocols.statemachine.timers.HostDeadTimer;
 import protocols.statemachine.utils.OperationAndId;
 import protocols.app.utils.Operation;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
@@ -48,6 +49,7 @@ public class StateMachine extends GenericProtocol {
     private static final Logger logger = LogManager.getLogger(StateMachine.class);
 
     public final static String ADD_REPLICA = "add";
+    public final static String REM_REPLICA = "remove";
     public final static byte MEMBERSHIP_OP_TYPE = 2;
 
     private enum State {JOINING, ACTIVE}
@@ -67,7 +69,7 @@ public class StateMachine extends GenericProtocol {
     private List<OperationAndId> pendingOps; // List of pending operations
     private Map<Integer, OperationAndId> decidedOps; // Decided operation by instance
     private Map<Integer, Host> replicasToSendState; // Host to send state in an instance
-
+    private Map<Integer, Integer> hostFailures; // Map that stores numbers of failures of each host
 
     //TODO: ter um if que vê se vamos usar o paxos ou o multi paxos (se replica é lider fixe, senao
     // temos de redirecionar a operação para o lider e quando muda o lider temos de avisar a
@@ -80,6 +82,7 @@ public class StateMachine extends GenericProtocol {
         pendingOps = new LinkedList<>();
         decidedOps = new HashMap<>();
         replicasToSendState = new HashMap<>();
+        hostFailures = new HashMap<>();
 
         String address = props.getProperty("address");
         String port = props.getProperty("p2p_port");
@@ -105,6 +108,9 @@ public class StateMachine extends GenericProtocol {
         /*--------------------- Register Message Serializers ----------------------------- */
         registerMessageSerializer(channelId, AddReplicaMessage.MSG_ID, AddReplicaMessage.serializer);
         registerMessageSerializer(channelId, AddReplicaReply.MSG_ID, AddReplicaReply.serializer);
+
+        /*--------------------- Register Timer Handlers ----------------------------- */
+        registerTimerHandler(HostDeadTimer.TIMER_ID, this::uponHostDeadTimer);
 
         /*--------------------- Register Request Handlers ----------------------------- */
         registerRequestHandler(OrderRequest.REQUEST_ID, this::uponOrderRequest);
@@ -185,7 +191,7 @@ public class StateMachine extends GenericProtocol {
     private void uponCurrentStateReply(CurrentStateReply reply, short sourceProto) {
         int instance = reply.getInstance();
         Host h = replicasToSendState.remove(instance);
-        logger.debug("Current state reply, send to {} in instance {}",h,instance);
+        logger.debug("Current state reply, send to {} in instance {}", h, instance);
 
         if (h != null) {
             logger.debug("Sending membership: {} to {} in instance {}", membership, h, instance);
@@ -203,11 +209,11 @@ public class StateMachine extends GenericProtocol {
 
             boolean isMyOp = false;
 
-            if(pendingOps.size() > 0){
+            if (pendingOps.size() > 0) {
                 isMyOp = pendingOps.get(0).getOpId().compareTo(notification.getOpId()) == 0;
 
                 // If we proposed this operation, remove it from the pending list
-                if(isMyOp)
+                if (isMyOp)
                     pendingOps.remove(0);
             }
 
@@ -222,7 +228,7 @@ public class StateMachine extends GenericProtocol {
 
             // The decided operation was from the membership
             else
-              processMembershipChange(op, isMyOp, instance, sourceProto);
+                processMembershipChange(op, isMyOp, instance, sourceProto);
 
             // Move on to next instance of State Machine
             currentInstance++;
@@ -249,11 +255,10 @@ public class StateMachine extends GenericProtocol {
     private void uponAddReplicaMsg(AddReplicaMessage msg, Host host, short sourceProto, int channelId) {
         try {
             logger.debug("Received Add replica msg from {}", host);
-            // TODO: passamos host em bytes
             Operation op = new Operation(MEMBERSHIP_OP_TYPE, ADD_REPLICA, hostToByteArray(host));
             pendingOps.add(new OperationAndId(op, UUID.randomUUID()));
-            if(pendingOps.size() == 1){
-                OperationAndId opnId  = pendingOps.get(0);
+            if (pendingOps.size() == 1) {
+                OperationAndId opnId = pendingOps.get(0);
                 sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
                         PaxosAgreement.PROTOCOL_ID);
             }
@@ -264,19 +269,26 @@ public class StateMachine extends GenericProtocol {
     }
 
     private void uponAddReplicaReply(AddReplicaReply msg, Host host, short sourceProto, int channelId) {
-        logger.info("Trying to Add replica {}",host);
+        logger.info("Trying to Add replica {}", host);
         // Request state installation from App
         sendRequest(new InstallStateRequest(msg.getState()), HashApp.PROTO_ID);
         // Initialize this node
         currentInstance = msg.getInstance();
         membership = msg.getMembership();
         // Open connection to membership
-        for(Host h : membership)
+        for (Host h : membership)
             openConnection(h);
         state = State.ACTIVE;
         // Assuming that state was successfully installed
-        logger.debug("Joined notification in instance {}",currentInstance);
+        logger.debug("Joined notification in instance {}", currentInstance);
         triggerNotification(new JoinedNotification(membership, currentInstance));
+    }
+
+
+    /*--------------------------------- Timers ---------------------------------------- */
+
+    private void uponHostDeadTimer(HostDeadTimer hostDeadTimer, long timerId) {
+        tryConnection(hostDeadTimer.getHost());
     }
 
     /* --------------------------------- TCPChannel Events ---------------------------- */
@@ -289,15 +301,29 @@ public class StateMachine extends GenericProtocol {
 
     private void uponOutConnectionDown(OutConnectionDown event, int channelId) {
         logger.debug("Connection to {} is down, cause {}", event.getNode(), event.getCause());
+        processRemoveHost(event.getNode());
     }
 
     private void uponOutConnectionFailed(OutConnectionFailed<ProtoMessage> event, int channelId) {
-        //TODO: remove replica after X tries
+        Host h = event.getNode();
+        int port = h.getPort();
         logger.debug("Connection to {} failed, cause: {}", event.getNode(), event.getCause());
-        //Maybe we don't want to do this forever. At some point we assume he is no longer there.
-        //Also, maybe wait a little bit before retrying, or else you'll be trying 1000s of times per second
-        if (membership.contains(event.getNode()))
-            openConnection(event.getNode());
+
+        // Increment failure counter for this host
+        if (hostFailures.get(port) == null)
+            hostFailures.put(port, 1);
+        else
+            hostFailures.put(port, hostFailures.get(port) + 1);
+
+        // If connection to host has failed many time, remove host
+        if (hostFailures.get(port) == 30) {
+            processRemoveHost(h);
+
+        } else {
+            // Setup new HostDeadTimer to wait a little before retrying
+            setupTimer(new HostDeadTimer(h), 500);
+            logger.debug("New HostDeadTimer created for host {}", port);
+        }
     }
 
     private void uponInConnectionUp(InConnectionUp event, int channelId) {
@@ -312,7 +338,7 @@ public class StateMachine extends GenericProtocol {
 
     private void processMembershipChange(Operation op, boolean isMyOp, int instance, short sourceProto) throws IOException {
         Host h = hostFromByteArray(op.getData());
-        logger.debug("Processing Membership Operation with host {}",h);
+        logger.debug("Processing Membership Operation with host {}", h);
 
 
         // Operation to add host to membership
@@ -337,7 +363,33 @@ public class StateMachine extends GenericProtocol {
             logger.debug("Membership Operation to remove {} in instance {}", h, instance);
             membership.remove(h);
             closeConnection(h);
-            sendRequest(new RemoveReplicaRequest(instance, h), PaxosAgreement.PROTOCOL_ID);
+            sendRequest(new RemoveReplicaRequest(instance + 1, h), PaxosAgreement.PROTOCOL_ID);
+        }
+    }
+
+    private void tryConnection(Host h) {
+        if (membership.contains(h))
+            openConnection(h);
+    }
+
+    private void processRemoveHost(Host h) {
+        try {
+            logger.debug("Connection to host {} died, going to remove him", h);
+
+            // Add remove operation to head of list, to minimize no outgoing connection errors
+            Operation op = new Operation(MEMBERSHIP_OP_TYPE, REM_REPLICA, hostToByteArray(h));
+            if (pendingOps.size() == 0)
+                pendingOps.add(0, new OperationAndId(op, UUID.randomUUID()));
+            else
+                pendingOps.add(1, new OperationAndId(op, UUID.randomUUID()));
+
+            if (pendingOps.size() == 1) {
+                OperationAndId opnId = pendingOps.get(0);
+                sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
+                        PaxosAgreement.PROTOCOL_ID);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 

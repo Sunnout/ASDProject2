@@ -1,9 +1,13 @@
-[5003] [32mI[19:33:45,681] [main]HashApp:[m Listening on localhost:6003
-[5003] [32mI[19:33:46,184] [main]StateMachine:[m Listening on localhost:5003
-[5003] [32mI[19:33:46,221] [main]StateMachine:[m My initial membership [127.0.0.1:5000, 127.0.0.1:5001, 127.0.0.1:5002] 
-[5003] [32mI[19:33:46,223] [main]StateMachine:[m Starting in JOINING as I am not part of initial membership
-[5003] [32mI[19:33:46,231] [400-PaxosAgreement]PaxosAgreement:[m Channel 2 created, I am 127.0.0.1:5003
-[5003] [32mI[19:33:46,334] [200-StateMachine]StateMachine:[m Connection to 127.0.0.1:5000 is up
-[5003] [32mI[19:33:56,292] [200-StateMachine]StateMachine:[m Connection to 127.0.0.1:5002 is up
-[5003] [32mI[19:33:56,335] [200-StateMachine]StateMachine:[m Connection to 127.0.0.1:5001 is up
-[5003] [32mI[19:34:21,289] [Thread-1]Main:[m Goodbye
+[5003] [32mI[18:04:34,419] [main]HashApp:[m Listening on localhost:6003
+[5003] [32mI[18:04:34,715] [main]StateMachine:[m Listening on localhost:5003
+[5003] [32mI[18:04:34,741] [main]StateMachine:[m My initial membership [127.0.0.1:5000, 127.0.0.1:5001, 127.0.0.1:5002] 
+[5003] [32mI[18:04:34,742] [main]StateMachine:[m Starting in JOINING as I am not part of initial membership
+[5003] [32mI[18:04:34,747] [400-PaxosAgreement]PaxosAgreement:[m Channel 2 created, I am 127.0.0.1:5003
+[5003] [32mI[18:04:34,798] [200-StateMachine]StateMachine:[m Connection to 127.0.0.1:5001 is up
+[5003] [32mI[18:04:34,876] [200-StateMachine]StateMachine:[m Trying to Add replica 127.0.0.1:5001
+[5003] [32mI[18:04:34,878] [400-PaxosAgreement]PaxosAgreement:[m Agreement starting at instance 1,  membership: [127.0.0.1:5000, 127.0.0.1:5001, 127.0.0.1:5002, 127.0.0.1:5003]
+[5003] [32mI[18:04:34,878] [300-HashApp]HashApp:[m State installed N_OPS= 0, MAP_SIZE=0, HASH=
+[5003] [32mI[18:04:34,915] [200-StateMachine]StateMachine:[m Connection to 127.0.0.1:5003 is up
+[5003] [32mI[18:04:34,919] [200-StateMachine]StateMachine:[m Connection to 127.0.0.1:5000 is up
+[5003] [32mI[18:04:34,922] [200-StateMachine]StateMachine:[m Connection to 127.0.0.1:5002 is up
+[5003] [32mI[18:05:07,572] [300-HashApp]HashApp:[m Current state N_OPS= 1000, MAP_SIZE=471, HASH=7babcbff82c5b6b3fe9fe6385675631df556f604764db6ead1ff1a7d37fe163c

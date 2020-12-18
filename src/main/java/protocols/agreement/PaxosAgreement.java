@@ -447,7 +447,7 @@ public class PaxosAgreement extends GenericProtocol {
             // Setup new PaxosTimer that expires if we don't decide
             long newTimerId = setupTimer(new PaxosTimer(instance), 2000);
             ps.setPaxosTimer(newTimerId);
-            logger.debug("uponPaxosTimer: New PaxosTimer created with id {}", newTimerId);
+            logger.debug("New PaxosTimer created for instance {}", instance);
         }
     }
 
