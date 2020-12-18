@@ -318,6 +318,7 @@ public class PaxosAgreement extends GenericProtocol {
                     OperationAndId opnId = ps.getHighestLearnedValue();
                     // If the quorum is for the current instance then decide
                     ps.setToDecide(opnId);
+
                     if (currentInstance == instance) {
                         logger.debug("Decided {} in instance {}", opnId.getOpId(), instance);
                         triggerNotification(new DecidedNotification(instance, opnId.getOpId(),

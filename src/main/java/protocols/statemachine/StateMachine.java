@@ -1,7 +1,9 @@
 package protocols.statemachine;
 
+import protocols.agreement.MultiPaxosAgreement;
 import protocols.agreement.PaxosAgreement;
 import protocols.agreement.notifications.JoinedNotification;
+import protocols.agreement.notifications.NewLeaderNotification;
 import protocols.agreement.requests.AddReplicaRequest;
 import protocols.agreement.requests.SameReplicasRequest;
 import protocols.app.HashApp;
@@ -10,6 +12,7 @@ import protocols.app.requests.CurrentStateRequest;
 import protocols.app.requests.InstallStateRequest;
 import protocols.statemachine.messages.AddReplicaReply;
 import protocols.statemachine.messages.AddReplicaMessage;
+import protocols.statemachine.messages.ProposeToLeaderMessage;
 import protocols.statemachine.requests.RemoveReplicaRequest;
 import protocols.statemachine.utils.OperationAndId;
 import protocols.app.utils.Operation;
@@ -61,18 +64,16 @@ public class StateMachine extends GenericProtocol {
 
     private State state;
 
+    // Multipaxos stuff
+    private static final boolean isPaxos = false;
+    private Host currentLeader;
+
     // Estado atual
     private List<Host> membership; // Current membership
     private int currentInstance; // Current State Machine instance
     private List<OperationAndId> pendingOps; // List of pending operations
     private Map<Integer, OperationAndId> decidedOps; // Decided operation by instance
     private Map<Integer, Host> replicasToSendState; // Host to send state in an instance
-
-
-    //TODO: ter um if que vê se vamos usar o paxos ou o multi paxos (se replica é lider fixe, senao
-    // temos de redirecionar a operação para o lider e quando muda o lider temos de avisar a
-    // state machine)
-
 
     public StateMachine(Properties props) throws IOException, HandlerRegistrationException {
         super(PROTOCOL_NAME, PROTOCOL_ID);
@@ -86,6 +87,9 @@ public class StateMachine extends GenericProtocol {
 
         logger.info("Listening on {}:{}", address, port);
         this.self = new Host(InetAddress.getByName(address), Integer.parseInt(port));
+
+        if(!isPaxos)
+            currentLeader = null;
 
         Properties channelProps = new Properties();
         channelProps.setProperty(TCPChannel.ADDRESS_KEY, address);
@@ -105,6 +109,7 @@ public class StateMachine extends GenericProtocol {
         /*--------------------- Register Message Serializers ----------------------------- */
         registerMessageSerializer(channelId, AddReplicaMessage.MSG_ID, AddReplicaMessage.serializer);
         registerMessageSerializer(channelId, AddReplicaReply.MSG_ID, AddReplicaReply.serializer);
+        registerMessageSerializer(channelId, ProposeToLeaderMessage.MSG_ID, ProposeToLeaderMessage.serializer);
 
         /*--------------------- Register Request Handlers ----------------------------- */
         registerRequestHandler(OrderRequest.REQUEST_ID, this::uponOrderRequest);
@@ -115,9 +120,11 @@ public class StateMachine extends GenericProtocol {
         /*--------------------- Register Message Handlers ----------------------------- */
         registerMessageHandler(channelId, AddReplicaMessage.MSG_ID, this::uponAddReplicaMsg, this::uponMsgFail);
         registerMessageHandler(channelId, AddReplicaReply.MSG_ID, this::uponAddReplicaReply, this::uponMsgFail);
+        registerMessageHandler(channelId, ProposeToLeaderMessage.MSG_ID, this::uponProposeToLeaderMsg, this::uponMsgFail);
 
         /*--------------------- Register Notification Handlers ----------------------------- */
         subscribeNotification(DecidedNotification.NOTIFICATION_ID, this::uponDecidedNotification);
+        subscribeNotification(NewLeaderNotification.NOTIFICATION_ID, this::uponNewLeaderNotification);
     }
 
     @Override
@@ -139,7 +146,6 @@ public class StateMachine extends GenericProtocol {
             initialMembership.add(h);
         }
         logger.info("My initial membership {} ", initialMembership);
-
 
         if (initialMembership.contains(self)) {
             state = State.ACTIVE;
@@ -166,15 +172,34 @@ public class StateMachine extends GenericProtocol {
     private void uponOrderRequest(OrderRequest request, short sourceProto) {
         try {
             logger.debug("Received request: " + request);
+            OperationAndId newOp = new OperationAndId(Operation.fromByteArray(request.getOperation()), request.getOpId());
 
-            // If I am active and have not proposed anything in this instance, propose the value
-            if (state == State.ACTIVE && pendingOps.size() == 0) {
-                logger.debug("Proposed {} in instance {}", request.getOpId(), currentInstance);
-                sendRequest(new ProposeRequest(currentInstance, request.getOpId(), request.getOperation()),
-                        PaxosAgreement.PROTOCOL_ID);
+            if(state == State.ACTIVE){
+                // If we are running paxos
+                // or we are running multipaxos and we are the leader
+                // or we are running multipaxos and we dont know who the leader is
+                // and we have no pending operations, propose
+                if((isPaxos || currentLeader == null || currentLeader.compareTo(self) == 0) && pendingOps.size() == 0){
+                    short protocolId = isPaxos ? PaxosAgreement.PROTOCOL_ID : MultiPaxosAgreement.PROTOCOL_ID;
+                    logger.debug("uponOrderRequest: proposed {} in instance {}", request.getOpId(), currentInstance);
+                    sendRequest(new ProposeRequest(currentInstance, request.getOpId(), request.getOperation()),
+                            protocolId);
+                }
+
+                // Else if we are running multipaxos and we are not the leader,
+                // send the new operation to the leader
+                else {
+                    if(!isPaxos && currentLeader != null && currentLeader.compareTo(self) != 0) {
+                        List<OperationAndId> newOpList = new ArrayList<>();
+                        newOpList.add(newOp);
+                        sendMessage(new ProposeToLeaderMessage(newOpList), currentLeader);
+                    }
+                }
             }
+
             // Add value to list of pending operations until it is decided
             pendingOps.add(new OperationAndId(Operation.fromByteArray(request.getOperation()), request.getOpId()));
+
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -229,15 +254,36 @@ public class StateMachine extends GenericProtocol {
 
             // If there are pending operations, propose the first one
             if (pendingOps.size() > 0) {
-                OperationAndId opnId = pendingOps.get(0);
-                logger.debug("Proposed {} in instance {}", opnId.getOpId(), currentInstance);
+                short protocolId = isPaxos ? PaxosAgreement.PROTOCOL_ID : MultiPaxosAgreement.PROTOCOL_ID;
 
-                sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
-                        PaxosAgreement.PROTOCOL_ID);
+                // If running paxos or running multipaxos and I am the leader, propose
+                if(isPaxos || (currentLeader != null && currentLeader.compareTo(self) == 0)) {
+                    OperationAndId opnId = pendingOps.get(0);
+                    logger.debug("Proposed {} in instance {}", opnId.getOpId(), currentInstance);
+
+                    sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
+                            protocolId);
+                }
             }
+
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private void uponNewLeaderNotification(NewLeaderNotification notification, short sourceProto) {
+        // Received from MultiPaxos notification there is a new leader
+        Host newLeader = notification.getNewLeader();
+        logger.debug("Changing leader from {} to {}", currentLeader, newLeader);
+        currentLeader = newLeader;
+
+        //TODO enviar pending todo para ele? Ou enviar uma a uma no upon decided?
+        // o gajo que for o ultimo a enviar as suas mensagens vai ficar po fim, problema?
+        // Need to send my proposals to the new leader
+        if(currentLeader.compareTo(self) != 0)
+            sendMessage(new ProposeToLeaderMessage(pendingOps), currentLeader);
+
+        logger.debug("Sent {} operations to leader", pendingOps.size());
     }
 
     /*--------------------------------- Messages ---------------------------------------- */
@@ -249,13 +295,17 @@ public class StateMachine extends GenericProtocol {
     private void uponAddReplicaMsg(AddReplicaMessage msg, Host host, short sourceProto, int channelId) {
         try {
             logger.debug("Received Add replica msg from {}", host);
-            // TODO: passamos host em bytes
             Operation op = new Operation(MEMBERSHIP_OP_TYPE, ADD_REPLICA, hostToByteArray(host));
             pendingOps.add(new OperationAndId(op, UUID.randomUUID()));
+
             if(pendingOps.size() == 1){
-                OperationAndId opnId  = pendingOps.get(0);
-                sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
-                        PaxosAgreement.PROTOCOL_ID);
+                short protocolId = isPaxos ? PaxosAgreement.PROTOCOL_ID : MultiPaxosAgreement.PROTOCOL_ID;
+
+                if(isPaxos || (currentLeader != null && currentLeader.compareTo(self) == 0)) {
+                    OperationAndId opnId = pendingOps.get(0);
+                    sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
+                            protocolId);
+                }
             }
 
         } catch (IOException e) {
@@ -277,6 +327,29 @@ public class StateMachine extends GenericProtocol {
         // Assuming that state was successfully installed
         logger.debug("Joined notification in instance {}",currentInstance);
         triggerNotification(new JoinedNotification(membership, currentInstance));
+    }
+
+    // TODO added multipaxos stuff here
+    private void uponProposeToLeaderMsg(ProposeToLeaderMessage msg, Host host, short sourceProto, int channelId) {
+        // TODO guardar operacoes de outros numa lista a parte ou na mesma que o leader?
+        // Adding proposed operations to pending operations, we are the new leader
+        try {
+            boolean toPropose = pendingOps.size() == 0;
+
+            List<OperationAndId> proposedOperations = msg.getProposedOperations();
+            logger.debug("uponProposeToLeaderMsg: before had {} operations", pendingOps.size());
+            pendingOps.addAll(proposedOperations);
+            logger.debug("uponProposeToLeaderMsg: now have {} operations", pendingOps.size());
+
+            if(toPropose && pendingOps.size() > 0){
+                OperationAndId opnId = pendingOps.get(0);
+                sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
+                        MultiPaxosAgreement.PROTOCOL_ID);
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     /* --------------------------------- TCPChannel Events ---------------------------- */
