@@ -268,7 +268,7 @@ public class StateMachine extends GenericProtocol {
         // Request state installation from App
         sendRequest(new InstallStateRequest(msg.getState()), HashApp.PROTO_ID);
         // Initialize this node
-        currentInstance = msg.getInstance() + 1;
+        currentInstance = msg.getInstance();
         membership = msg.getMembership();
         // Open connection to membership
         for(Host h : membership)
@@ -308,8 +308,6 @@ public class StateMachine extends GenericProtocol {
         logger.trace("Connection from {} is down, cause: {}", event.getNode(), event.getCause());
     }
 
-
-
     /* --------------------------------- Procedures ---------------------------- */
 
     private void processMembershipChange(Operation op, boolean isMyOp, int instance, short sourceProto) throws IOException {
@@ -323,7 +321,7 @@ public class StateMachine extends GenericProtocol {
             // Add this host to the list to send state and request state from App
             if (isMyOp) {
                 logger.debug("Sending request for state of instance {} ", instance);
-                replicasToSendState.put(instance +1, h);
+                replicasToSendState.put(instance + 1, h);
                 sendRequest(new CurrentStateRequest(instance + 1), HashApp.PROTO_ID);
             }
 
@@ -332,9 +330,8 @@ public class StateMachine extends GenericProtocol {
 
             // Warn Paxos that a replica joined the system in an instance
             sendRequest(new AddReplicaRequest(instance + 1, h), PaxosAgreement.PROTOCOL_ID);
-
-
         }
+
         // Operation to remove host from membership
         else {
             logger.debug("Membership Operation to remove {} in instance {}", h, instance);
