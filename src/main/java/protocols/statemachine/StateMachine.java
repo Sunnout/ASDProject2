@@ -3,6 +3,7 @@ package protocols.statemachine;
 import protocols.agreement.MultiPaxosAgreement;
 import protocols.agreement.PaxosAgreement;
 import protocols.agreement.notifications.JoinedNotification;
+import protocols.agreement.notifications.MPJoinedNotification;
 import protocols.agreement.notifications.NewLeaderNotification;
 import protocols.agreement.requests.AddReplicaRequest;
 import protocols.agreement.requests.SameReplicasRequest;
@@ -12,6 +13,7 @@ import protocols.app.requests.CurrentStateRequest;
 import protocols.app.requests.InstallStateRequest;
 import protocols.statemachine.messages.AddReplicaReply;
 import protocols.statemachine.messages.AddReplicaMessage;
+import protocols.statemachine.messages.MPAddReplicaReply;
 import protocols.statemachine.messages.ProposeToLeaderMessage;
 import protocols.statemachine.requests.RemoveReplicaRequest;
 import protocols.statemachine.utils.OperationAndId;
@@ -109,6 +111,7 @@ public class StateMachine extends GenericProtocol {
         /*--------------------- Register Message Serializers ----------------------------- */
         registerMessageSerializer(channelId, AddReplicaMessage.MSG_ID, AddReplicaMessage.serializer);
         registerMessageSerializer(channelId, AddReplicaReply.MSG_ID, AddReplicaReply.serializer);
+        registerMessageSerializer(channelId, MPAddReplicaReply.MSG_ID, MPAddReplicaReply.serializer);
         registerMessageSerializer(channelId, ProposeToLeaderMessage.MSG_ID, ProposeToLeaderMessage.serializer);
 
         /*--------------------- Register Request Handlers ----------------------------- */
@@ -120,6 +123,7 @@ public class StateMachine extends GenericProtocol {
         /*--------------------- Register Message Handlers ----------------------------- */
         registerMessageHandler(channelId, AddReplicaMessage.MSG_ID, this::uponAddReplicaMsg, this::uponMsgFail);
         registerMessageHandler(channelId, AddReplicaReply.MSG_ID, this::uponAddReplicaReply, this::uponMsgFail);
+        registerMessageHandler(channelId, MPAddReplicaReply.MSG_ID, this::uponMPAddReplicaReply, this::uponMsgFail);
         registerMessageHandler(channelId, ProposeToLeaderMessage.MSG_ID, this::uponProposeToLeaderMsg, this::uponMsgFail);
 
         /*--------------------- Register Notification Handlers ----------------------------- */
@@ -154,7 +158,12 @@ public class StateMachine extends GenericProtocol {
             logger.info("My initial membership {} ", initialMembership);
             membership = new LinkedList<>(initialMembership);
             membership.forEach(this::openConnection);
-            triggerNotification(new JoinedNotification(membership, 0));
+
+            if(isPaxos)
+                triggerNotification(new JoinedNotification(membership, 0));
+
+            else
+                triggerNotification(new MPJoinedNotification(membership, 0, null));
 
         } else {
             state = State.JOINING;
@@ -214,7 +223,12 @@ public class StateMachine extends GenericProtocol {
 
         if (h != null) {
             logger.debug("Sending membership: {} to {} in instance {}", membership, h, instance);
-            sendMessage(new AddReplicaReply(instance, reply.getState(), membership), h);
+
+            if(isPaxos)
+                sendMessage(new AddReplicaReply(instance, reply.getState(), membership), h);
+
+            else
+                sendMessage(new MPAddReplicaReply(instance, reply.getState(), membership, currentLeader), h);
         }
     }
 
@@ -237,25 +251,25 @@ public class StateMachine extends GenericProtocol {
             }
 
             logger.debug("Decision was mine in instance {}? {}", currentInstance, isMyOp);
+            short protocolId = isPaxos ? PaxosAgreement.PROTOCOL_ID : MultiPaxosAgreement.PROTOCOL_ID;
 
             // The decided operation was from the application, so we notify it
             if (op.getOpType() != MEMBERSHIP_OP_TYPE) {
+
                 triggerNotification(new ExecuteNotification(notification.getOpId(),
                         notification.getOperation()));
-                sendRequest(new SameReplicasRequest(instance + 1), PaxosAgreement.PROTOCOL_ID);
+                sendRequest(new SameReplicasRequest(instance + 1), protocolId);
             }
 
             // The decided operation was from the membership
             else
-              processMembershipChange(op, isMyOp, instance, sourceProto);
+                processMembershipChange(op, isMyOp, instance, sourceProto);
 
             // Move on to next instance of State Machine
             currentInstance++;
 
             // If there are pending operations, propose the first one
             if (pendingOps.size() > 0) {
-                short protocolId = isPaxos ? PaxosAgreement.PROTOCOL_ID : MultiPaxosAgreement.PROTOCOL_ID;
-
                 // If running paxos or running multipaxos and I am the leader, propose
                 if(isPaxos || (currentLeader != null && currentLeader.compareTo(self) == 0)) {
                     OperationAndId opnId = pendingOps.get(0);
@@ -280,10 +294,10 @@ public class StateMachine extends GenericProtocol {
         //TODO enviar pending todo para ele? Ou enviar uma a uma no upon decided?
         // o gajo que for o ultimo a enviar as suas mensagens vai ficar po fim, problema?
         // Need to send my proposals to the new leader
-        if(currentLeader.compareTo(self) != 0)
+        if(currentLeader.compareTo(self) != 0) {
             sendMessage(new ProposeToLeaderMessage(pendingOps), currentLeader);
-
-        logger.debug("Sent {} operations to leader", pendingOps.size());
+            logger.debug("Sent {} operations to leader", pendingOps.size());
+        }
     }
 
     /*--------------------------------- Messages ---------------------------------------- */
@@ -296,15 +310,21 @@ public class StateMachine extends GenericProtocol {
         try {
             logger.debug("Received Add replica msg from {}", host);
             Operation op = new Operation(MEMBERSHIP_OP_TYPE, ADD_REPLICA, hostToByteArray(host));
-            pendingOps.add(new OperationAndId(op, UUID.randomUUID()));
+            OperationAndId opnId = new OperationAndId(op, UUID.randomUUID());
+            pendingOps.add(opnId);
 
             if(pendingOps.size() == 1){
                 short protocolId = isPaxos ? PaxosAgreement.PROTOCOL_ID : MultiPaxosAgreement.PROTOCOL_ID;
 
-                if(isPaxos || (currentLeader != null && currentLeader.compareTo(self) == 0)) {
-                    OperationAndId opnId = pendingOps.get(0);
+                if(isPaxos || (currentLeader == null) || (currentLeader != null && currentLeader.compareTo(self) == 0)) {
                     sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
                             protocolId);
+                }
+
+                else if(currentLeader.compareTo(self) != 0){
+                    List<OperationAndId> newOpList = new ArrayList<>();
+                    newOpList.add(opnId);
+                    sendMessage(new ProposeToLeaderMessage(newOpList), currentLeader);
                 }
             }
 
@@ -314,25 +334,33 @@ public class StateMachine extends GenericProtocol {
     }
 
     private void uponAddReplicaReply(AddReplicaReply msg, Host host, short sourceProto, int channelId) {
-        logger.info("Trying to Add replica {}",host);
-        // Request state installation from App
-        sendRequest(new InstallStateRequest(msg.getState()), HashApp.PROTO_ID);
-        // Initialize this node
-        currentInstance = msg.getInstance();
-        membership = msg.getMembership();
-        // Open connection to membership
-        for(Host h : membership)
-            openConnection(h);
-        state = State.ACTIVE;
+        logger.info("Paxos: Trying to Add replica {}",host);
+
+        // Installs state, updates membership and sets state as Joined
+        prepareState(msg.getInstance(), msg.getMembership(), msg.getState());
+
         // Assuming that state was successfully installed
         logger.debug("Joined notification in instance {}",currentInstance);
         triggerNotification(new JoinedNotification(membership, currentInstance));
     }
 
-    // TODO added multipaxos stuff here
+    private void uponMPAddReplicaReply(MPAddReplicaReply msg, Host host, short sourceProto, int channelId) {
+        logger.info("MultiPaxos: Trying to Add replica {}",host);
+
+        // Installs state, updates membership, sets state as Joined
+        // and updates the current Leader
+        prepareState(msg.getInstance(), msg.getMembership(), msg.getState());
+        currentLeader = msg.getCurrentLeader();
+
+        // Assuming that state was successfully installed
+        logger.debug("Joined notification in instance {}",currentInstance);
+        triggerNotification(new MPJoinedNotification(membership, currentInstance, currentLeader));
+    }
+
     private void uponProposeToLeaderMsg(ProposeToLeaderMessage msg, Host host, short sourceProto, int channelId) {
-        // TODO guardar operacoes de outros numa lista a parte ou na mesma que o leader?
+
         // Adding proposed operations to pending operations, we are the new leader
+        // TODO check if there is membership operations, insert in head
         try {
             boolean toPropose = pendingOps.size() == 0;
 
@@ -387,6 +415,7 @@ public class StateMachine extends GenericProtocol {
         Host h = hostFromByteArray(op.getData());
         logger.debug("Processing Membership Operation with host {}",h);
 
+        short protocolId = isPaxos ? PaxosAgreement.PROTOCOL_ID : MultiPaxosAgreement.PROTOCOL_ID;
 
         // Operation to add host to membership
         if (op.getKey().equals(ADD_REPLICA)) {
@@ -401,8 +430,8 @@ public class StateMachine extends GenericProtocol {
             membership.add(h);
             openConnection(h);
 
-            // Warn Paxos that a replica joined the system in an instance
-            sendRequest(new AddReplicaRequest(instance + 1, h), PaxosAgreement.PROTOCOL_ID);
+            // Warn Paxos/Multipaxos that a replica joined the system in an instance
+            sendRequest(new AddReplicaRequest(instance + 1, h), protocolId);
         }
 
         // Operation to remove host from membership
@@ -410,7 +439,7 @@ public class StateMachine extends GenericProtocol {
             logger.debug("Membership Operation to remove {} in instance {}", h, instance);
             membership.remove(h);
             closeConnection(h);
-            sendRequest(new RemoveReplicaRequest(instance, h), PaxosAgreement.PROTOCOL_ID);
+            sendRequest(new RemoveReplicaRequest(instance, h), protocolId);
         }
     }
 
@@ -431,6 +460,21 @@ public class StateMachine extends GenericProtocol {
         dis.read(address, 0, address.length);
         short port = dis.readShort();
         return new Host(InetAddress.getByAddress(address), port);
+    }
+
+    private void prepareState(int instance, List<Host> membership, byte[] state){
+        // Request state installation from App
+        sendRequest(new InstallStateRequest(state), HashApp.PROTO_ID);
+
+        // Initialize this node
+        currentInstance = instance;
+        this.membership = membership;
+
+        // Open connection to membership
+        for(Host h : membership)
+            openConnection(h);
+
+        this.state = State.ACTIVE;
     }
 
 }

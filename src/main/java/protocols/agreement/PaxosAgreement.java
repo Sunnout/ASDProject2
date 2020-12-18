@@ -251,7 +251,6 @@ public class PaxosAgreement extends GenericProtocol {
                             msg.getOpId());
                     ps.setHighestAcceptedValue(opnId);
 
-
                     // If we are not joined, respond only to the sender
                     if (currentInstance == -1) {
                         logger.debug("Sent AcceptOkMessage for {}", host);
@@ -360,7 +359,6 @@ public class PaxosAgreement extends GenericProtocol {
                     currentInstance, ps.getMembership());
 
             // If we decided a value before joining, send acceptOk and trigger decide
-
             canDecide(currentInstance);
 
         } catch (Exception e) {
