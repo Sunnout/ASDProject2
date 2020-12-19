@@ -443,7 +443,7 @@ public class StateMachine extends GenericProtocol {
         if (op.getKey().equals(ADD_REPLICA)) {
             logger.debug("Membership Operation to add {} in instance {}", h, instance);
             // Add this host to the list to send state and request state from App
-            if (isMyOp) {
+            if ((isPaxos && isMyOp) || (!isPaxos && currentLeader != null && currentLeader.compareTo(self) == 0)) {
                 logger.debug("Sending request for state of instance {} ", instance);
                 replicasToSendState.put(instance + 1, h);
                 sendRequest(new CurrentStateRequest(instance + 1), HashApp.PROTO_ID);

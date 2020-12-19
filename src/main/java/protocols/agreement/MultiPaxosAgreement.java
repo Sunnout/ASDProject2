@@ -2,13 +2,11 @@ package protocols.agreement;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.graalvm.compiler.nodes.memory.MemoryCheckpoint;
 import protocols.agreement.messages.AcceptMessage;
 import protocols.agreement.messages.AcceptOkMessage;
 import protocols.agreement.messages.PrepareMessage;
 import protocols.agreement.messages.PrepareOkMessage;
 import protocols.agreement.notifications.DecidedNotification;
-import protocols.agreement.notifications.JoinedNotification;
 import protocols.agreement.notifications.MPJoinedNotification;
 import protocols.agreement.notifications.NewLeaderNotification;
 import protocols.agreement.requests.AddReplicaRequest;
@@ -17,11 +15,9 @@ import protocols.agreement.requests.RemoveReplicaRequest;
 import protocols.agreement.requests.SameReplicasRequest;
 import protocols.agreement.timers.MultiPaxosLeaderAcceptTimer;
 import protocols.agreement.timers.MultiPaxosStartTimer;
-import protocols.agreement.timers.PaxosTimer;
+import protocols.agreement.utils.HostAndSn;
 import protocols.agreement.utils.MultiPaxosState;
-import protocols.agreement.utils.PaxosState;
 import protocols.app.utils.Operation;
-import protocols.statemachine.messages.ProposeToLeaderMessage;
 import protocols.statemachine.notifications.ChannelReadyNotification;
 import protocols.statemachine.utils.OperationAndId;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
@@ -33,6 +29,11 @@ import java.io.IOException;
 import java.util.*;
 
 public class MultiPaxosAgreement extends GenericProtocol {
+
+    //TODO mudança de lider: novo lider tem que ter sn maior que o anterior.
+
+    //TODO Quando muda lider, outros recebem prepare desse lider e
+    // nos prepares oks mandam todos os valores anteriores aceites nas intâncias anteriores
 
     private static final Logger logger = LogManager.getLogger(MultiPaxosAgreement.class);
 
@@ -166,6 +167,11 @@ public class MultiPaxosAgreement extends GenericProtocol {
         try {
             int instance = msg.getInstance();
 
+            //TODO DARÁ MERDA com mudança de lider?
+            if(currentInstance == joinedInstance) {
+                currentLeader = host;
+            }
+
             // If the message is not from an instance that has already ended
             if (instance >= currentInstance && (currentLeader != null && host.compareTo(currentLeader) == 0)) {
                 logger.debug("uponAcceptMessage: got accept from leader");
@@ -188,6 +194,24 @@ public class MultiPaxosAgreement extends GenericProtocol {
 
                 ps.setToAcceptOpnId(opnId);
                 ps.setToAcceptSn(msgSn);
+                ps.checkAcceptsOks();
+
+                // If majority quorum was achieved
+                if (ps.getNumberOfAcceptOks() >= ps.getQuorumSize() && ps.getToDecide() == null) {
+                    logger.debug("uponAcceptMessage: Can decide after getting new membership in instance {}", instance);
+                    logger.debug("uponAcceptMessage: Got AcceptOk majority");
+
+                    ps.setToDecide(opnId);
+
+                    // If the quorum is for the current instance then decide
+                    if (currentInstance == instance) {
+                        logger.debug("uponAcceptMessage: Decided {} in instance {}", opnId.getOpId(), instance);
+                        triggerNotification(new DecidedNotification(instance, opnId.getOpId(),
+                                opnId.getOperation().toByteArray()));
+
+                        currentInstance++;
+                    }
+                }
             }
 
         } catch (Exception e) {
@@ -229,6 +253,9 @@ public class MultiPaxosAgreement extends GenericProtocol {
                         cancelTimer(ps.getPaxosLeaderTimer());
                     }
                 }
+
+            } else if(instance >= currentInstance && ps.getToAcceptSn() == -1) {
+                ps.addToAcceptOksList(new HostAndSn(host, msg.getHighestAccept()));
             }
 
         } catch (Exception e) {
@@ -266,7 +293,7 @@ public class MultiPaxosAgreement extends GenericProtocol {
         logger.info("Agreement starting at instance {},  membership: {}",
                 currentInstance, ps.getMembership());
 
-        canAccept(currentInstance);
+        decideOrSendLateAcceptOks(currentInstance);
     }
 
     /*--------------------------------- Requests ---------------------------------------- */
@@ -298,7 +325,7 @@ public class MultiPaxosAgreement extends GenericProtocol {
         // Membership up to date
         ps.setMembershipOk();
 
-        canAccept(instance);
+        decideOrSendLateAcceptOks(instance);
     }
 
     private void uponRemoveReplicaRequest(RemoveReplicaRequest request, short sourceProto) {
@@ -313,7 +340,7 @@ public class MultiPaxosAgreement extends GenericProtocol {
         // Membership up to date
         ps.setMembershipOk();
 
-        canAccept(instance);
+        decideOrSendLateAcceptOks(instance);
     }
 
     private void uponSameReplicasRequest(SameReplicasRequest request, short sourceProto) {
@@ -324,12 +351,13 @@ public class MultiPaxosAgreement extends GenericProtocol {
         usePreviousMembership(instance);
         ps.setMembershipOk();
 
-        canAccept(instance);
+        decideOrSendLateAcceptOks(instance);
     }
 
     /*--------------------------------- Timers ---------------------------------------- */
 
     private void uponMultiPaxosLeaderTimer(MultiPaxosLeaderAcceptTimer paxosTimer, long timerId) {
+        //TODO ver se já decidiu algo
         MultiPaxosState ps = getPaxosInstance(currentInstance);
         logger.debug("MultiPaxosLeaderTimer Timeout in instance {}", currentInstance);
 
@@ -406,14 +434,13 @@ public class MultiPaxosAgreement extends GenericProtocol {
         }
     }
 
-    //TODO Rename this shit, do not like this name, but can not find other name :(
-    private void canAccept(int instance){
+    private void decideOrSendLateAcceptOks(int instance){
         MultiPaxosState ps = getPaxosInstance(instance);
 
         try {
             // If did not get a majority ok accept oks but already received an accept from leader
             // send accept oks to everyone
-            if (!canDecide(instance) && ps.getToAcceptOpnId() != null) {
+            if (ps.getToAcceptOpnId() != null) {
                 OperationAndId opnId = ps.getToAcceptOpnId();
 
                 for (Host h : ps.getMembership()) {
@@ -422,34 +449,28 @@ public class MultiPaxosAgreement extends GenericProtocol {
                 }
             }
 
+            canDecide(instance);
+
         } catch(Exception e){
             e.printStackTrace();
         }
     }
 
-    private boolean canDecide(int instance) throws IOException {
+    private void canDecide(int instance) throws IOException {
         MultiPaxosState ps = getPaxosInstance(instance);
 
-        // If majority quorum was achieved
-        if (ps.hasAcceptOkQuorum() && ps.getToDecide() == null) {
-            logger.debug("Can decide after getting new membership in instance {}", instance);
-            logger.debug("canDecide: Got AcceptOk majority");
-
+        // If we have received an accept ok quorum and we have received the corresponding accept,
+        // we can decide
+        if(ps.hasAcceptOkQuorum() && ps.getToAcceptOpnId() != null) {
+            ps.setToDecide(ps.getToAcceptOpnId());
             OperationAndId opnId = ps.getToAcceptOpnId();
-            ps.setToDecide(opnId);
 
-            // If the quorum is for the current instance then decide
-            if (currentInstance == instance) {
-                logger.debug("canDecide: Decided {} in instance {}", opnId.getOpId(), instance);
-                triggerNotification(new DecidedNotification(instance, opnId.getOpId(),
-                        opnId.getOperation().toByteArray()));
+            logger.debug("canDecide: Decided {} in instance {}", opnId.getOpId(), instance);
+            triggerNotification(new DecidedNotification(instance, opnId.getOpId(),
+                    opnId.getOperation().toByteArray()));
 
-                currentInstance++;
-                return true;
-            }
+            currentInstance++;
         }
-
-        return false;
     }
 
     private void usePreviousMembership(int instance) {
