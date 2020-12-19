@@ -336,6 +336,8 @@ public class MultiPaxosAgreement extends GenericProtocol {
         // Removing replica from membership of instance and closing connection
         usePreviousMembership(instance);
         ps.removeReplicaFromMembership(replica);
+        logger.debug("After removing replica: {}", ps.getMembership());
+
         closeConnection(replica);
         // Membership up to date
         ps.setMembershipOk();

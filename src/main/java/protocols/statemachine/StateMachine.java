@@ -474,18 +474,30 @@ public class StateMachine extends GenericProtocol {
         try {
             logger.debug("Connection to host {} died, going to remove him", h);
 
-            // Add remove operation to head of list, to minimize no outgoing connection errors
-            Operation op = new Operation(MEMBERSHIP_OP_TYPE, REM_REPLICA, hostToByteArray(h));
-            if (pendingOps.size() == 0)
-                pendingOps.add(0, new OperationAndId(op, UUID.randomUUID()));
-            else
-                pendingOps.add(1, new OperationAndId(op, UUID.randomUUID()));
+            if(isPaxos || currentLeader == null || (currentLeader.compareTo(self) == 0)) {
+                // Add remove operation to head of list, to minimize no outgoing connection errors
+                Operation op = new Operation(MEMBERSHIP_OP_TYPE, REM_REPLICA, hostToByteArray(h));
 
-            if (pendingOps.size() == 1) {
-                OperationAndId opnId = pendingOps.get(0);
-                sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
-                        PaxosAgreement.PROTOCOL_ID);
+                short protocolId = isPaxos ? PaxosAgreement.PROTOCOL_ID : MultiPaxosAgreement.PROTOCOL_ID;
+
+                if (pendingOps.size() == 0)
+                    pendingOps.add(0, new OperationAndId(op, UUID.randomUUID()));
+
+                else
+                    pendingOps.add(1, new OperationAndId(op, UUID.randomUUID()));
+
+                if (pendingOps.size() == 1) {
+                    OperationAndId opnId = pendingOps.get(0);
+                    sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
+                            protocolId);
+                }
             }
+
+            else if(currentLeader.compareTo(h) == 0){
+
+            }
+
+
         } catch (Exception e) {
             e.printStackTrace();
         }
