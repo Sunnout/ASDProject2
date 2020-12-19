@@ -369,13 +369,10 @@ public class StateMachine extends GenericProtocol {
     private void uponProposeToLeaderMsg(ProposeToLeaderMessage msg, Host host, short sourceProto, int channelId) {
         // Adding proposed operations to pending operations, we are the new leader
         // TODO check if there is membership operations, insert in head
+        logger.debug("ProposeToLeader from {} with currentLeader {}",host,currentLeader);
         try {
             List<OperationAndId> proposedOperations = msg.getProposedOperations();
-
-            if(currentLeader.compareTo(self) != 0){
-                possibleLeaderOps.addAll(proposedOperations);
-
-            } else {
+            if(currentLeader != null && currentLeader.compareTo(self) == 0){
                 boolean toPropose = pendingOps.size() == 0;
 
                 logger.debug("uponProposeToLeaderMsg: before had {} operations", pendingOps.size());
@@ -388,6 +385,10 @@ public class StateMachine extends GenericProtocol {
                             MultiPaxosAgreement.PROTOCOL_ID);
                 }
             }
+            else
+                possibleLeaderOps.addAll(proposedOperations);
+
+
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -399,6 +400,7 @@ public class StateMachine extends GenericProtocol {
     private void uponHostDeadTimer(HostDeadTimer hostDeadTimer, long timerId) {
         tryConnection(hostDeadTimer.getHost());
     }
+
 
     /* --------------------------------- TCPChannel Events ---------------------------- */
     private void uponOutConnectionUp(OutConnectionUp event, int channelId) {
@@ -504,11 +506,6 @@ public class StateMachine extends GenericProtocol {
                             protocolId);
                 }
             }
-
-            else if(currentLeader.compareTo(h) == 0){
-
-            }
-
 
         } catch (Exception e) {
             e.printStackTrace();

@@ -2,10 +2,7 @@ package protocols.agreement;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import protocols.agreement.messages.AcceptMessage;
-import protocols.agreement.messages.AcceptOkMessage;
-import protocols.agreement.messages.PrepareMessage;
-import protocols.agreement.messages.PrepareOkMessage;
+import protocols.agreement.messages.*;
 import protocols.agreement.notifications.DecidedNotification;
 import protocols.agreement.notifications.MPJoinedNotification;
 import protocols.agreement.notifications.NewLeaderNotification;
@@ -13,6 +10,7 @@ import protocols.agreement.requests.AddReplicaRequest;
 import protocols.agreement.requests.ProposeRequest;
 import protocols.agreement.requests.RemoveReplicaRequest;
 import protocols.agreement.requests.SameReplicasRequest;
+import protocols.agreement.timers.LeaderDeadTimer;
 import protocols.agreement.timers.MultiPaxosLeaderAcceptTimer;
 import protocols.agreement.timers.MultiPaxosStartTimer;
 import protocols.agreement.utils.HostAndSn;
@@ -58,6 +56,7 @@ public class MultiPaxosAgreement extends GenericProtocol {
         /*--------------------- Register Timer Handlers ----------------------------- */
         registerTimerHandler(MultiPaxosLeaderAcceptTimer.TIMER_ID, this::uponMultiPaxosLeaderTimer);
         registerTimerHandler(MultiPaxosStartTimer.TIMER_ID, this::uponMultiPaxosStartTimer);
+        registerTimerHandler(LeaderDeadTimer.TIMER_ID,this::uponLeaderDeadTimer);
 
         /*--------------------- Register Request Handlers ----------------------------- */
         registerRequestHandler(ProposeRequest.REQUEST_ID, this::uponProposeRequest);
@@ -85,14 +84,14 @@ public class MultiPaxosAgreement extends GenericProtocol {
 
         /*---------------------- Register Message Serializers ---------------------- */
         registerMessageSerializer(cId, PrepareMessage.MSG_ID, PrepareMessage.serializer);
-        registerMessageSerializer(cId, PrepareOkMessage.MSG_ID, PrepareOkMessage.serializer);
+        registerMessageSerializer(cId, MPPrepareOkMessage.MSG_ID, MPPrepareOkMessage.serializer);
         registerMessageSerializer(cId, AcceptMessage.MSG_ID, AcceptMessage.serializer);
         registerMessageSerializer(cId, AcceptOkMessage.MSG_ID, AcceptOkMessage.serializer);
 
         /*---------------------- Register Message Handlers -------------------------- */
         try {
             registerMessageHandler(cId, PrepareMessage.MSG_ID, this::uponPrepareMessage, this::uponMsgFail);
-            registerMessageHandler(cId, PrepareOkMessage.MSG_ID, this::uponPrepareOkMessage, this::uponMsgFail);
+            registerMessageHandler(cId, MPPrepareOkMessage.MSG_ID, this::uponPrepareOkMessage, this::uponMsgFail);
             registerMessageHandler(cId, AcceptMessage.MSG_ID, this::uponAcceptMessage, this::uponMsgFail);
             registerMessageHandler(cId, AcceptOkMessage.MSG_ID, this::uponAcceptOkMessage, this::uponMsgFail);
 
@@ -107,8 +106,7 @@ public class MultiPaxosAgreement extends GenericProtocol {
         try {
             int instance = msg.getInstance();
 
-            // If the message is not from an instance that has already ended
-            if (instance >= currentInstance) {
+
                 if(host.compareTo(myself) != 0 && (currentLeader == null || msg.getSn() > currentSn)) {
                     logger.debug("uponPrepareMessage: new leader is {}", host);
                     currentLeader = host;
@@ -118,9 +116,17 @@ public class MultiPaxosAgreement extends GenericProtocol {
 
                 if(host.compareTo(myself) == 0 || currentLeader.compareTo(host) == 0) {
                     logger.debug("uponPrepareMessage: sending prepare ok to {}", host);
-                    sendMessage(new PrepareOkMessage(instance, null, null, -1, currentSn), host);
+                    List<OperationAndId> ops = new LinkedList<>();
+
+                    for(int i = instance; i < currentInstance; i++){
+                        MultiPaxosState ps = getPaxosInstance(i);
+                        ops.add(ps.getToDecide());
+                    }
+
+                    logger.debug("Sending {} operations in prepareOk",ops.size());
+                    sendMessage(new MPPrepareOkMessage(instance, ops, currentSn), host);
                 }
-            }
+
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -128,10 +134,12 @@ public class MultiPaxosAgreement extends GenericProtocol {
     }
 
     // Only the leader will receive prepareOks
-    private void uponPrepareOkMessage(PrepareOkMessage msg, Host host, short sourceProto, int channelId) {
+    private void uponPrepareOkMessage(MPPrepareOkMessage msg, Host host, short sourceProto, int channelId) {
         try {
             int instance = msg.getInstance();
             MultiPaxosState ps = getPaxosInstance(instance);
+
+
 
             // If the message is not from an instance that has already ended
             // and we don't have a majority of prepareOks
@@ -142,22 +150,36 @@ public class MultiPaxosAgreement extends GenericProtocol {
 
                 // If majority quorum was achieved
                 if (ps.getPrepareOkCounter() >= ps.getQuorumSize()) {
-                    logger.debug("I am the leader!");
+                    logger.debug("I am the leader {} !",myself);
                     ps.setPrepareOkMajority(true);
                     currentLeader = myself;
                     currentSn = msg.getSn();
                     triggerNotification(new NewLeaderNotification(currentLeader));
 
-                    OperationAndId opnId = ps.getInitialProposal();
-                    ps.setToAcceptOpnId(opnId);
-                    ps.setToAcceptSn(currentSn);
+                    List<OperationAndId> ops = msg.getOps();
+                    int msgInstance = msg.getInstance();
+                    if(ops.size() != 0){
+                        for(OperationAndId op: ops){
+                            // Send accept messages to all
+                            for (Host h : ps.getMembership()) {
+                                sendMessage(new AcceptMessage(msgInstance, op.getOpId(),
+                                        op.getOperation().toByteArray(), currentSn), h);
+                            }
+                            msgInstance++;
+                        }
+                    }else {
 
-                    // Send accept messages to all
-                    for (Host h : ps.getMembership()) {
-                        sendMessage(new AcceptMessage(instance, opnId.getOpId(),
-                                opnId.getOperation().toByteArray(), currentSn), h);
+                        OperationAndId opnId = ps.getInitialProposal();
+                        ps.setToAcceptOpnId(opnId);
+                        ps.setToAcceptSn(currentSn);
+
+                        // Send accept messages to all
+                        for (Host h : ps.getMembership()) {
+                            sendMessage(new AcceptMessage(instance, opnId.getOpId(),
+                                    opnId.getOperation().toByteArray(), currentSn), h);
+                        }
+                        logger.debug("uponPrepareOkMessage: Sent AcceptMessages");
                     }
-                    logger.debug("uponPrepareOkMessage: Sent AcceptMessages");
                 }
             }
 
@@ -176,7 +198,7 @@ public class MultiPaxosAgreement extends GenericProtocol {
             }
 
             // If the message is not from an instance that has already ended
-            if (instance >= currentInstance && (currentLeader != null && host.compareTo(currentLeader) == 0)) {
+            if ((currentLeader != null && host.compareTo(currentLeader) == 0)) {
                 logger.debug("uponAcceptMessage: got accept from leader");
                 int msgSn = msg.getSn();
                 MultiPaxosState ps = getPaxosInstance(instance);
@@ -308,7 +330,6 @@ public class MultiPaxosAgreement extends GenericProtocol {
             Random r = new Random();
             setupTimer(new MultiPaxosStartTimer(request), r.nextInt(5000));
         }
-
         else {
             proposeRequest(request);
         }
@@ -382,6 +403,10 @@ public class MultiPaxosAgreement extends GenericProtocol {
             logger.debug("MultiPaxosStartTimer timeout, will propose");
             proposeRequest(paxosTimer.getRequest());
         }
+    }
+
+    private void uponLeaderDeadTimer(LeaderDeadTimer timer ,long timerId){
+
     }
 
     /*--------------------------------- Procedures ---------------------------------------- */

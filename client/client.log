@@ -1,11 +1,4 @@
-<<<<<<< HEAD
-2020-12-11 17:53:00:931 0 sec: 0 operations; est completion in 0 second 
-2020-12-11 17:53:05:820 5 sec: 0 operations; est completion in 106751991167300 days 15 hours 
-2020-12-11 17:53:10:819 10 sec: 0 operations; est completion in 106751991167300 days 15 hours 
-2020-12-11 17:53:15:820 15 sec: 0 operations; est completion in 106751991167300 days 15 hours 
-=======
-2020-12-17 19:33:49:360 0 sec: 0 operations; est completion in 0 second 
-2020-12-17 19:33:54:197 5 sec: 0 operations; est completion in 106751991167300 days 15 hours 
-2020-12-17 19:33:59:196 10 sec: 7 operations; 1.4 current ops/sec; est completion in 1 day 15 hours [READ AverageLatency(us)=1139347] [UPDATE AverageLatency(us)=581994.8] 
-2020-12-17 19:34:04:196 15 sec: 9 operations; 0.4 current ops/sec; est completion in 1 day 22 hours [READ AverageLatency(us)=2080197]  
->>>>>>> sirPaxos
+2020-12-19 22:57:08:338 0 sec: 0 operations; est completion in 0 second 
+2020-12-19 22:57:13:299 5 sec: 248 operations; 49,6 current ops/sec; est completion in 3 minutes [READ AverageLatency(us)=40517,91] [UPDATE AverageLatency(us)=64242,75] 
+2020-12-19 22:57:18:299 10 sec: 2804 operations; 511,2 current ops/sec; est completion in 26 seconds [READ AverageLatency(us)=4012,14] [UPDATE AverageLatency(us)=4296,92] 
+2020-12-19 22:57:23:299 15 sec: 6823 operations; 803,8 current ops/sec; est completion in 7 second [READ AverageLatency(us)=2384,64] [CLEANUP AverageLatency(us)=0,5] [UPDATE AverageLatency(us)=2396,84] 
