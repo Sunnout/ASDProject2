@@ -109,15 +109,15 @@ public class MultiPaxosAgreement extends GenericProtocol {
 
             // If the message is not from an instance that has already ended
             if (instance >= currentInstance) {
-                if(currentLeader == null) {
+                if(host.compareTo(myself) != 0 && (currentLeader == null || msg.getSn() > currentSn)) {
                     logger.debug("uponPrepareMessage: new leader is {}", host);
                     currentLeader = host;
+                    currentSn = msg.getSn();
                     triggerNotification(new NewLeaderNotification(currentLeader));
                 }
 
-                if(currentLeader.compareTo(host) == 0) {
+                if(host.compareTo(myself) == 0 || currentLeader.compareTo(host) == 0) {
                     logger.debug("uponPrepareMessage: sending prepare ok to {}", host);
-                    currentSn = msg.getSn();
                     sendMessage(new PrepareOkMessage(instance, null, null, -1, currentSn), host);
                 }
             }
@@ -142,8 +142,11 @@ public class MultiPaxosAgreement extends GenericProtocol {
 
                 // If majority quorum was achieved
                 if (ps.getPrepareOkCounter() >= ps.getQuorumSize()) {
-                    logger.debug("uponPrepareOkMessage: Got PrepareOk majority");
+                    logger.debug("I am the leader!");
                     ps.setPrepareOkMajority(true);
+                    currentLeader = myself;
+                    currentSn = msg.getSn();
+                    triggerNotification(new NewLeaderNotification(currentLeader));
 
                     OperationAndId opnId = ps.getInitialProposal();
                     ps.setToAcceptOpnId(opnId);

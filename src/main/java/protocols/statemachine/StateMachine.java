@@ -76,6 +76,7 @@ public class StateMachine extends GenericProtocol {
     private List<Host> membership; // Current membership
     private int currentInstance; // Current State Machine instance
     private List<OperationAndId> pendingOps; // List of pending operations
+    private List<OperationAndId> possibleLeaderOps; // List of operations received from other hosts
     private Map<Integer, OperationAndId> decidedOps; // Decided operation by instance
     private Map<Integer, Host> replicasToSendState; // Host to send state in an instance
     private Map<Integer, Integer> hostFailures; // Map that stores numbers of failures of each host
@@ -85,6 +86,7 @@ public class StateMachine extends GenericProtocol {
         this.isPaxos = isPaxos;
         currentInstance = 0;
         pendingOps = new LinkedList<>();
+        possibleLeaderOps = new LinkedList<>();
         decidedOps = new HashMap<>();
         replicasToSendState = new HashMap<>();
         hostFailures = new HashMap<>();
@@ -213,7 +215,7 @@ public class StateMachine extends GenericProtocol {
             }
 
             // Add value to list of pending operations until it is decided
-            pendingOps.add(new OperationAndId(Operation.fromByteArray(request.getOperation()), request.getOpId()));
+            pendingOps.add(newOp);
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -298,8 +300,12 @@ public class StateMachine extends GenericProtocol {
         currentLeader = newLeader;
 
         if(currentLeader.compareTo(self) != 0) {
+            possibleLeaderOps.clear();
             sendMessage(new ProposeToLeaderMessage(pendingOps), currentLeader);
             logger.debug("Sent {} operations to leader", pendingOps.size());
+
+        } else {
+            pendingOps.addAll(possibleLeaderOps);
         }
     }
 
@@ -364,17 +370,23 @@ public class StateMachine extends GenericProtocol {
         // Adding proposed operations to pending operations, we are the new leader
         // TODO check if there is membership operations, insert in head
         try {
-            boolean toPropose = pendingOps.size() == 0;
-
             List<OperationAndId> proposedOperations = msg.getProposedOperations();
-            logger.debug("uponProposeToLeaderMsg: before had {} operations", pendingOps.size());
-            pendingOps.addAll(proposedOperations);
-            logger.debug("uponProposeToLeaderMsg: now have {} operations", pendingOps.size());
 
-            if(toPropose && pendingOps.size() > 0){
-                OperationAndId opnId = pendingOps.get(0);
-                sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
-                        MultiPaxosAgreement.PROTOCOL_ID);
+            if(currentLeader.compareTo(self) != 0){
+                possibleLeaderOps.addAll(proposedOperations);
+
+            } else {
+                boolean toPropose = pendingOps.size() == 0;
+
+                logger.debug("uponProposeToLeaderMsg: before had {} operations", pendingOps.size());
+                pendingOps.addAll(proposedOperations);
+                logger.debug("uponProposeToLeaderMsg: now have {} operations", pendingOps.size());
+
+                if(toPropose && pendingOps.size() > 0){
+                    OperationAndId opnId = pendingOps.get(0);
+                    sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
+                            MultiPaxosAgreement.PROTOCOL_ID);
+                }
             }
 
         } catch (IOException e) {
