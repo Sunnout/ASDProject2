@@ -40,7 +40,6 @@ public class MultiPaxosAgreement extends GenericProtocol {
     public final static short PROTOCOL_ID = 500;
     public final static String PROTOCOL_NAME = "MultiPaxosAgreement";
 
-
     private Host myself;
     private Host currentLeader;
     private int currentInstance; // Instance that is currently running

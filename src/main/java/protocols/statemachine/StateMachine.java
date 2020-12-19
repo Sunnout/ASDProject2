@@ -13,9 +13,10 @@ import protocols.app.requests.CurrentStateRequest;
 import protocols.app.requests.InstallStateRequest;
 import protocols.statemachine.messages.AddReplicaReply;
 import protocols.statemachine.messages.AddReplicaMessage;
+import protocols.agreement.requests.RemoveReplicaRequest;
 import protocols.statemachine.messages.MPAddReplicaReply;
 import protocols.statemachine.messages.ProposeToLeaderMessage;
-import protocols.statemachine.requests.RemoveReplicaRequest;
+import protocols.statemachine.timers.HostDeadTimer;
 import protocols.statemachine.utils.OperationAndId;
 import protocols.app.utils.Operation;
 import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
@@ -53,6 +54,7 @@ public class StateMachine extends GenericProtocol {
     private static final Logger logger = LogManager.getLogger(StateMachine.class);
 
     public final static String ADD_REPLICA = "add";
+    public final static String REM_REPLICA = "remove";
     public final static byte MEMBERSHIP_OP_TYPE = 2;
 
     private enum State {JOINING, ACTIVE}
@@ -67,7 +69,7 @@ public class StateMachine extends GenericProtocol {
     private State state;
 
     // Multipaxos stuff
-    private static final boolean isPaxos = false;
+    private final boolean isPaxos;
     private Host currentLeader;
 
     // Estado atual
@@ -76,22 +78,23 @@ public class StateMachine extends GenericProtocol {
     private List<OperationAndId> pendingOps; // List of pending operations
     private Map<Integer, OperationAndId> decidedOps; // Decided operation by instance
     private Map<Integer, Host> replicasToSendState; // Host to send state in an instance
+    private Map<Integer, Integer> hostFailures; // Map that stores numbers of failures of each host
 
-    public StateMachine(Properties props) throws IOException, HandlerRegistrationException {
+    public StateMachine(Properties props, boolean isPaxos) throws IOException, HandlerRegistrationException {
         super(PROTOCOL_NAME, PROTOCOL_ID);
+        this.isPaxos = isPaxos;
         currentInstance = 0;
         pendingOps = new LinkedList<>();
         decidedOps = new HashMap<>();
         replicasToSendState = new HashMap<>();
+        hostFailures = new HashMap<>();
+        currentLeader = null;
 
         String address = props.getProperty("address");
         String port = props.getProperty("p2p_port");
 
         logger.info("Listening on {}:{}", address, port);
         this.self = new Host(InetAddress.getByName(address), Integer.parseInt(port));
-
-        if(!isPaxos)
-            currentLeader = null;
 
         Properties channelProps = new Properties();
         channelProps.setProperty(TCPChannel.ADDRESS_KEY, address);
@@ -113,6 +116,9 @@ public class StateMachine extends GenericProtocol {
         registerMessageSerializer(channelId, AddReplicaReply.MSG_ID, AddReplicaReply.serializer);
         registerMessageSerializer(channelId, MPAddReplicaReply.MSG_ID, MPAddReplicaReply.serializer);
         registerMessageSerializer(channelId, ProposeToLeaderMessage.MSG_ID, ProposeToLeaderMessage.serializer);
+
+        /*--------------------- Register Timer Handlers ----------------------------- */
+        registerTimerHandler(HostDeadTimer.TIMER_ID, this::uponHostDeadTimer);
 
         /*--------------------- Register Request Handlers ----------------------------- */
         registerRequestHandler(OrderRequest.REQUEST_ID, this::uponOrderRequest);
@@ -190,7 +196,7 @@ public class StateMachine extends GenericProtocol {
                 // and we have no pending operations, propose
                 if((isPaxos || currentLeader == null || currentLeader.compareTo(self) == 0) && pendingOps.size() == 0){
                     short protocolId = isPaxos ? PaxosAgreement.PROTOCOL_ID : MultiPaxosAgreement.PROTOCOL_ID;
-                    logger.debug("uponOrderRequest: proposed {} in instance {}", request.getOpId(), currentInstance);
+                    logger.debug("Proposed {} in instance {}", request.getOpId(), currentInstance);
                     sendRequest(new ProposeRequest(currentInstance, request.getOpId(), request.getOperation()),
                             protocolId);
                 }
@@ -219,7 +225,7 @@ public class StateMachine extends GenericProtocol {
     private void uponCurrentStateReply(CurrentStateReply reply, short sourceProto) {
         int instance = reply.getInstance();
         Host h = replicasToSendState.remove(instance);
-        logger.debug("Current state reply, send to {} in instance {}",h,instance);
+        logger.debug("Current state reply, send to {} in instance {}", h, instance);
 
         if (h != null) {
             logger.debug("Sending membership: {} to {} in instance {}", membership, h, instance);
@@ -291,9 +297,6 @@ public class StateMachine extends GenericProtocol {
         logger.debug("Changing leader from {} to {}", currentLeader, newLeader);
         currentLeader = newLeader;
 
-        //TODO enviar pending todo para ele? Ou enviar uma a uma no upon decided?
-        // o gajo que for o ultimo a enviar as suas mensagens vai ficar po fim, problema?
-        // Need to send my proposals to the new leader
         if(currentLeader.compareTo(self) != 0) {
             sendMessage(new ProposeToLeaderMessage(pendingOps), currentLeader);
             logger.debug("Sent {} operations to leader", pendingOps.size());
@@ -316,16 +319,16 @@ public class StateMachine extends GenericProtocol {
             if(pendingOps.size() == 1){
                 short protocolId = isPaxos ? PaxosAgreement.PROTOCOL_ID : MultiPaxosAgreement.PROTOCOL_ID;
 
-                if(isPaxos || (currentLeader == null) || (currentLeader != null && currentLeader.compareTo(self) == 0)) {
+                if(isPaxos || (currentLeader == null) || (currentLeader.compareTo(self) == 0)) {
                     sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
                             protocolId);
                 }
+            }
 
-                else if(currentLeader.compareTo(self) != 0){
-                    List<OperationAndId> newOpList = new ArrayList<>();
-                    newOpList.add(opnId);
-                    sendMessage(new ProposeToLeaderMessage(newOpList), currentLeader);
-                }
+            if(currentLeader != null && currentLeader.compareTo(self) != 0){
+                List<OperationAndId> newOpList = new ArrayList<>();
+                newOpList.add(opnId);
+                sendMessage(new ProposeToLeaderMessage(newOpList), currentLeader);
             }
 
         } catch (IOException e) {
@@ -358,7 +361,6 @@ public class StateMachine extends GenericProtocol {
     }
 
     private void uponProposeToLeaderMsg(ProposeToLeaderMessage msg, Host host, short sourceProto, int channelId) {
-
         // Adding proposed operations to pending operations, we are the new leader
         // TODO check if there is membership operations, insert in head
         try {
@@ -380,6 +382,12 @@ public class StateMachine extends GenericProtocol {
         }
     }
 
+    /*--------------------------------- Timers ---------------------------------------- */
+
+    private void uponHostDeadTimer(HostDeadTimer hostDeadTimer, long timerId) {
+        tryConnection(hostDeadTimer.getHost());
+    }
+
     /* --------------------------------- TCPChannel Events ---------------------------- */
     private void uponOutConnectionUp(OutConnectionUp event, int channelId) {
         logger.info("Connection to {} is up", event.getNode());
@@ -390,15 +398,29 @@ public class StateMachine extends GenericProtocol {
 
     private void uponOutConnectionDown(OutConnectionDown event, int channelId) {
         logger.debug("Connection to {} is down, cause {}", event.getNode(), event.getCause());
+        processRemoveHost(event.getNode());
     }
 
     private void uponOutConnectionFailed(OutConnectionFailed<ProtoMessage> event, int channelId) {
-        //TODO: remove replica after X tries
+        Host h = event.getNode();
+        int port = h.getPort();
         logger.debug("Connection to {} failed, cause: {}", event.getNode(), event.getCause());
-        //Maybe we don't want to do this forever. At some point we assume he is no longer there.
-        //Also, maybe wait a little bit before retrying, or else you'll be trying 1000s of times per second
-        if (membership.contains(event.getNode()))
-            openConnection(event.getNode());
+
+        // Increment failure counter for this host
+        if (hostFailures.get(port) == null)
+            hostFailures.put(port, 1);
+        else
+            hostFailures.put(port, hostFailures.get(port) + 1);
+
+        // If connection to host has failed many time, remove host
+        if (hostFailures.get(port) == 30) {
+            processRemoveHost(h);
+
+        } else {
+            // Setup new HostDeadTimer to wait a little before retrying
+            setupTimer(new HostDeadTimer(h), 500);
+            logger.debug("New HostDeadTimer created for host {}", port);
+        }
     }
 
     private void uponInConnectionUp(InConnectionUp event, int channelId) {
@@ -439,7 +461,33 @@ public class StateMachine extends GenericProtocol {
             logger.debug("Membership Operation to remove {} in instance {}", h, instance);
             membership.remove(h);
             closeConnection(h);
-            sendRequest(new RemoveReplicaRequest(instance, h), protocolId);
+            sendRequest(new RemoveReplicaRequest(instance + 1, h), protocolId);
+        }
+    }
+
+    private void tryConnection(Host h) {
+        if (membership.contains(h))
+            openConnection(h);
+    }
+
+    private void processRemoveHost(Host h) {
+        try {
+            logger.debug("Connection to host {} died, going to remove him", h);
+
+            // Add remove operation to head of list, to minimize no outgoing connection errors
+            Operation op = new Operation(MEMBERSHIP_OP_TYPE, REM_REPLICA, hostToByteArray(h));
+            if (pendingOps.size() == 0)
+                pendingOps.add(0, new OperationAndId(op, UUID.randomUUID()));
+            else
+                pendingOps.add(1, new OperationAndId(op, UUID.randomUUID()));
+
+            if (pendingOps.size() == 1) {
+                OperationAndId opnId = pendingOps.get(0);
+                sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
+                        PaxosAgreement.PROTOCOL_ID);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 

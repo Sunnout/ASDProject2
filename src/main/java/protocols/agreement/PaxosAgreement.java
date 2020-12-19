@@ -251,6 +251,7 @@ public class PaxosAgreement extends GenericProtocol {
                             msg.getOpId());
                     ps.setHighestAcceptedValue(opnId);
 
+
                     // If we are not joined, respond only to the sender
                     if (currentInstance == -1) {
                         logger.debug("Sent AcceptOkMessage for {}", host);
@@ -317,7 +318,6 @@ public class PaxosAgreement extends GenericProtocol {
                     OperationAndId opnId = ps.getHighestLearnedValue();
                     // If the quorum is for the current instance then decide
                     ps.setToDecide(opnId);
-
                     if (currentInstance == instance) {
                         logger.debug("Decided {} in instance {}", opnId.getOpId(), instance);
                         triggerNotification(new DecidedNotification(instance, opnId.getOpId(),
@@ -359,6 +359,7 @@ public class PaxosAgreement extends GenericProtocol {
                     currentInstance, ps.getMembership());
 
             // If we decided a value before joining, send acceptOk and trigger decide
+
             canDecide(currentInstance);
 
         } catch (Exception e) {
@@ -446,7 +447,7 @@ public class PaxosAgreement extends GenericProtocol {
             // Setup new PaxosTimer that expires if we don't decide
             long newTimerId = setupTimer(new PaxosTimer(instance), 2000);
             ps.setPaxosTimer(newTimerId);
-            logger.debug("uponPaxosTimer: New PaxosTimer created with id {}", newTimerId);
+            logger.debug("New PaxosTimer created for instance {}", instance);
         }
     }
 
@@ -507,7 +508,7 @@ public class PaxosAgreement extends GenericProtocol {
             if (ps.getNumberOfAcceptOks() >= ps.getQuorumSize()) {
                 OperationAndId opnId = ps.getHighestLearnedValue();
                 ps.setToDecide(opnId);
-                
+
                 for (Host h : ps.getMembership()) {
                     sendMessage(new AcceptOkMessage(instance, opnId.getOpId(),
                             opnId.getOperation().toByteArray(), ps.getHighestAccept()), h);
