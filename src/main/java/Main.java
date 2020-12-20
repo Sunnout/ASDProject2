@@ -42,7 +42,7 @@ public class Main {
         // IP of that interface and create a property "address=ip" to be used later by the channels.
         addInterfaceIp(props);
 
-        boolean isPaxos = false;
+        boolean isPaxos = true;
 
         // Application
         HashApp hashApp = new HashApp(props);
