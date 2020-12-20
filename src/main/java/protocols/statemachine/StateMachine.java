@@ -424,12 +424,12 @@ public class StateMachine extends GenericProtocol {
             hostFailures.put(port, hostFailures.get(port) + 1);
 
         // If connection to host has failed many time, remove host
-        if (hostFailures.get(port) == 30) {
+        if (hostFailures.get(port) == 100) {
             processRemoveHost(h);
 
         } else {
             // Setup new HostDeadTimer to wait a little before retrying
-            setupTimer(new HostDeadTimer(h), 500);
+            setupTimer(new HostDeadTimer(h), 1000);
             logger.debug("New HostDeadTimer created for host {}", port);
         }
     }
