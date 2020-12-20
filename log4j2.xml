@@ -4,9 +4,11 @@
         <Console name="Console" target="SYSTEM_OUT">
             <PatternLayout pattern="%highlight{%level{length=1}[%d{HH:mm:ss,SSS}] [%t]%logger{0}:} %msg%n"/>
         </Console>
+        <!--
         <File name="MyFile" fileName="${sys:logFilename}.log" append="false" immediateFlush="true">
             <PatternLayout pattern="%highlight{%level{length=1}[%d{HH:mm:ss,SSS}] [%t]%logger{0}:} %msg%n"/>
         </File>
+        -->
 
 
     </Appenders>
@@ -24,8 +26,9 @@
 
         <Root level="info">
             <AppenderRef ref="Console" level="info"/>
+            <!--
             <AppenderRef ref="MyFile" level="debug"/>
-
+            -->
         </Root>
     </Loggers>
 
