@@ -15,8 +15,8 @@ protocols/app/requests/InstallStateRequest.class
 protocols/agreement/messages/PrepareOkMessage$1.class
 protocols/agreement/PaxosAgreement.class
 protocols/agreement/timers/MultiPaxosLeaderAcceptTimer.class
-protocols/app/messages/ResponseMessage.class
 protocols/statemachine/notifications/ExecuteNotification.class
+protocols/app/messages/ResponseMessage.class
 protocols/statemachine/messages/AddReplicaReply.class
 protocols/statemachine/messages/MPAddReplicaReply.class
 protocols/agreement/messages/AcceptOkMessage$1.class
@@ -29,9 +29,9 @@ protocols/agreement/MultiPaxosAgreement.class
 protocols/statemachine/requests/AddReplicaRequest.class
 protocols/statemachine/timers/HostDeadTimer.class
 protocols/app/HashApp.class
-Main.class
 protocols/app/messages/RequestMessage$1.class
 protocols/agreement/messages/PrepareMessage.class
+Main.class
 protocols/agreement/requests/ProposeRequest.class
 protocols/agreement/utils/HostAndSn.class
 protocols/agreement/messages/PrepareMessage$1.class
@@ -49,7 +49,7 @@ protocols/statemachine/StateMachine.class
 protocols/statemachine/requests/OrderRequest.class
 protocols/agreement/notifications/NewLeaderNotification.class
 protocols/statemachine/StateMachine$State.class
-protocols/agreement/messages/AcceptMessage$1.class
 protocols/agreement/messages/AcceptMessage.class
+protocols/agreement/messages/AcceptMessage$1.class
 protocols/agreement/timers/PaxosTimer.class
 protocols/statemachine/utils/OperationAndId.class
