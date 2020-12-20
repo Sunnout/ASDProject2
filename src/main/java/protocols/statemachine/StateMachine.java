@@ -371,11 +371,7 @@ public class StateMachine extends GenericProtocol {
         // TODO check if there is membership operations, insert in head
         try {
             List<OperationAndId> proposedOperations = msg.getProposedOperations();
-
-            if(currentLeader.compareTo(self) != 0){
-                possibleLeaderOps.addAll(proposedOperations);
-
-            } else {
+            if(currentLeader != null && currentLeader.compareTo(self) == 0 ){
                 boolean toPropose = pendingOps.size() == 0;
 
                 logger.debug("uponProposeToLeaderMsg: before had {} operations", pendingOps.size());
@@ -387,6 +383,9 @@ public class StateMachine extends GenericProtocol {
                     sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
                             MultiPaxosAgreement.PROTOCOL_ID);
                 }
+            }
+            else{
+                possibleLeaderOps.addAll(proposedOperations);
             }
 
         } catch (IOException e) {
