@@ -134,7 +134,7 @@ do
 				> results/${expname}/${nthreads}_${nservers}_${node}.log" 2>&1 | sed "s/^/[c-$node] /" &
 done
 
-sleep 70
+sleep 240
 
 echo "Killing clients"
 for node in $clientnodes
