@@ -200,7 +200,7 @@ public class MultiPaxosAgreement extends GenericProtocol {
                 ps.checkAcceptsOks();
 
                 // If majority quorum was achieved
-                if (ps.getNumberOfAcceptOks() >= ps.getQuorumSize() && ps.getToDecide() == null) {
+                if (ps.hasAcceptOkQuorum() && ps.getToDecide() == null) {
                     logger.debug("uponAcceptMessage: Can decide after getting new membership in instance {}", instance);
                     logger.debug("uponAcceptMessage: Got AcceptOk majority");
 
