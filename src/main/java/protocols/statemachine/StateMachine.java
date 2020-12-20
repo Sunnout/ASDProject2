@@ -424,7 +424,7 @@ public class StateMachine extends GenericProtocol {
             hostFailures.put(port, hostFailures.get(port) + 1);
 
         // If connection to host has failed many time, remove host
-        if (hostFailures.get(port) == 30) {
+        if (hostFailures.get(port) == 200) {
             processRemoveHost(h);
 
         } else {
