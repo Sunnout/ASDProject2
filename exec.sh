@@ -74,8 +74,8 @@ if (( $nclients + $nservers > $nnodes )); then
 	exit
 fi
 
-clientnodes=`tail -n $nclients <<< $allnodes`
-servernodes=`head -n $nservers <<< $allnodes`
+clientnodes=`head -n $nclients <<< $allnodes`
+servernodes=`tail -n $nservers <<< $allnodes`
 
 mkdir -p logs/${expname}
 mkdir -p results/${expname}
