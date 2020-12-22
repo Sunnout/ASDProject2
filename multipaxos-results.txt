@@ -1,0 +1,29 @@
+Multipaxos:
+
+2 threads
+- throughput: 1374.20 (ops/sec)
+- latency: 2213.74 (us)
+
+4 threads
+- throughput: 1781.43 (ops/sec)
+- latency: 3757.27 (us)
+
+8 threads
+- throughput: 1797.83 (ops/sec)
+- latency: 8093.33 (us)
+
+16 threads
+- throughput: 1925.02 (ops/sec)
+- latency: 15719.46 (us)
+
+32 threads
+- throughput: 1843.16 (ops/sec)
+- latency: 33538.65 (us)
+
+64 threads
+- throughput: 1819.04 (ops/sec)
+- latency: 67798.41 (us)
+
+128 threads
+- throughput: 1012.10 (ops/sec)
+- latency: 249528.64 (us)

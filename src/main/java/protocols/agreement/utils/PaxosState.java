@@ -113,8 +113,6 @@ public class PaxosState {
 
     public void setHighestPrepareOk(int highestPrepareOk) {
         this.highestPrepareOk = highestPrepareOk;
-        if(this.highestPrepareOk > highestSeenSn)
-            this.highestSeenSn = this.highestPrepareOk;
     }
 
     public OperationAndId getInitialProposal() {
@@ -183,20 +181,20 @@ public class PaxosState {
             this.highestSeenSn = this.maxSnAccept;
     }
 
-   public void addHostToHaveAccepted(Host h){
+    public void addHostToHaveAccepted(Host h){
         haveAccepted.add(h);
-   }
-   public void resetHaveAccepted(){
+    }
+    public void resetHaveAccepted(){
         haveAccepted.clear();
-   }
-   public boolean hasAcceptOkQuorum(){
+    }
+    public boolean hasAcceptOkQuorum(){
         if(membership.size() == 0)
             return false;
         return haveAccepted.size() == getQuorumSize();
-   }
-   public int getNumberOfAcceptOks(){
+    }
+    public int getNumberOfAcceptOks(){
         return haveAccepted.size();
-   }
+    }
 
     public OperationAndId getToDecide() {
         return toDecide;

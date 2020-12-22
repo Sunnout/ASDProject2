@@ -1,0 +1,29 @@
+Paxos:
+
+2 threads
+- throughput: 713,31 (ops/sec)
+- latency: 3956.58 (us)
+
+4 threads
+- throughput: 771.30 (ops/sec)
+- latency: 7760.17 (us)
+
+8 threads
+- throughput: 850.86 (ops/sec)
+- latency: 12817.36 (us)
+
+16 threads
+- throughput: 892.43 (ops/sec)
+- latency: 25783.55 (us)
+
+32 threads
+- throughput: 884.29 (ops/sec)
+- latency: 52172.37 (us)
+
+64 threads
+- throughput: 873.12 (ops/sec)
+- latency: 113075.90 (us)
+
+128 threads
+- throughput: 839.38 (ops/sec)
+- latency: 225598.94 (us)

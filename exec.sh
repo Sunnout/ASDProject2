@@ -74,8 +74,8 @@ if (( $nclients + $nservers > $nnodes )); then
 	exit
 fi
 
-clientnodes=`tail -n $nclients <<< $allnodes`
-servernodes=`head -n $nservers <<< $allnodes`
+clientnodes=`head -n $nclients <<< $allnodes`
+servernodes=`tail -n $nservers <<< $allnodes`
 
 mkdir -p logs/${expname}
 mkdir -p results/${expname}
@@ -134,7 +134,7 @@ do
 				> results/${expname}/${nthreads}_${nservers}_${node}.log" 2>&1 | sed "s/^/[c-$node] /" &
 done
 
-sleep 70
+sleep 240
 
 echo "Killing clients"
 for node in $clientnodes

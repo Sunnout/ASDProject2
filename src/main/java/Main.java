@@ -1,9 +1,11 @@
+import protocols.agreement.MultiPaxosAgreement;
 import protocols.agreement.PaxosAgreement;
 import pt.unl.fct.di.novasys.babel.core.Babel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import protocols.app.HashApp;
 import protocols.statemachine.StateMachine;
+import pt.unl.fct.di.novasys.babel.core.GenericProtocol;
 
 import java.net.Inet4Address;
 import java.net.InetAddress;
@@ -40,12 +42,19 @@ public class Main {
         // IP of that interface and create a property "address=ip" to be used later by the channels.
         addInterfaceIp(props);
 
+        boolean isPaxos = true;
+
         // Application
         HashApp hashApp = new HashApp(props);
         // StateMachine Protocol
-        StateMachine sm = new StateMachine(props);
+        StateMachine sm = new StateMachine(props, isPaxos);
         // Agreement Protocol
-        PaxosAgreement agreement = new PaxosAgreement(props);
+        GenericProtocol agreement;
+
+        if(isPaxos)
+            agreement = new PaxosAgreement(props);
+        else
+            agreement = new MultiPaxosAgreement(props);
 
         //Register applications in babel
         babel.registerProtocol(hashApp);
