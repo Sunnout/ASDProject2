@@ -1,0 +1,109 @@
+2020-12-20 16:34:17:831 0 sec: 0 operations; est completion in 0 second 
+Waiting for server connections
+Connected to all servers!
+2020-12-20 16:34:22:787 5 sec: 696 operations; 139.17 current ops/sec; est completion in 5 minutes [READ AverageLatency(us)=10031.8] [UPDATE AverageLatency(us)=36665.55] 
+2020-12-20 16:34:27:787 10 sec: 1395 operations; 139.8 current ops/sec; est completion in 5 minutes [READ AverageLatency(us)=13106.63] [UPDATE AverageLatency(us)=26685.16] 
+2020-12-20 16:34:32:787 15 sec: 3791 operations; 479.2 current ops/sec; est completion in 3 minutes [READ AverageLatency(us)=5982.54] [UPDATE AverageLatency(us)=14821.03] 
+2020-12-20 16:34:37:787 20 sec: 6441 operations; 530 current ops/sec; est completion in 2 minutes [READ AverageLatency(us)=6236.77] [UPDATE AverageLatency(us)=9295.08] 
+2020-12-20 16:34:42:787 25 sec: 9126 operations; 537 current ops/sec; est completion in 1 minute [READ AverageLatency(us)=6460.36] [UPDATE AverageLatency(us)=8824.71] 
+2020-12-20 16:34:47:787 30 sec: 11498 operations; 474.4 current ops/sec; est completion in 1 minute [READ AverageLatency(us)=7861.42] [UPDATE AverageLatency(us)=8948.44] 
+2020-12-20 16:34:52:787 35 sec: 13951 operations; 490.6 current ops/sec; est completion in 1 minute [READ AverageLatency(us)=8637.16] [UPDATE AverageLatency(us)=7101.87] 
+2020-12-20 16:34:57:787 40 sec: 16502 operations; 510.2 current ops/sec; est completion in 1 minute [READ AverageLatency(us)=6165.25] [UPDATE AverageLatency(us)=10054.08] 
+2020-12-20 16:35:02:787 45 sec: 18842 operations; 468 current ops/sec; est completion in 1 minute [READ AverageLatency(us)=8329.26] [UPDATE AverageLatency(us)=8622.79] 
+2020-12-20 16:35:07:787 50 sec: 21198 operations; 471.2 current ops/sec; est completion in 1 minute [READ AverageLatency(us)=8750.26] [UPDATE AverageLatency(us)=8435] 
+2020-12-20 16:35:12:787 55 sec: 23872 operations; 534.8 current ops/sec; est completion in 1 minute [READ AverageLatency(us)=5895.92] [CLEANUP AverageLatency(us)=4] [UPDATE AverageLatency(us)=7959.3] 
+2020-12-20 16:35:17:787 60 sec: 25948 operations; 415.2 current ops/sec; est completion in 56 seconds [READ AverageLatency(us)=9912.99]  [UPDATE AverageLatency(us)=4714.44] 
+2020-12-20 16:35:22:787 65 sec: 28037 operations; 417.8 current ops/sec; est completion in 51 seconds [READ AverageLatency(us)=8473.67]  [UPDATE AverageLatency(us)=5913.04] 
+2020-12-20 16:35:27:787 70 sec: 29766 operations; 345.8 current ops/sec; est completion in 48 seconds [READ AverageLatency(us)=5472.43]  [UPDATE AverageLatency(us)=10343.96] 
+2020-12-20 16:35:32:787 75 sec: 32264 operations; 499.6 current ops/sec; est completion in 42 seconds [READ AverageLatency(us)=5963.98]  [UPDATE AverageLatency(us)=7205.39] 
+2020-12-20 16:35:37:787 80 sec: 33806 operations; 308.4 current ops/sec; est completion in 39 seconds [READ AverageLatency(us)=6786.72]  [UPDATE AverageLatency(us)=9529.28] 
+2020-12-20 16:35:42:787 85 sec: 35022 operations; 243.2 current ops/sec; est completion in 37 seconds [READ AverageLatency(us)=15379.86]  [UPDATE AverageLatency(us)=13310.4] 
+2020-12-20 16:35:47:787 90 sec: 37066 operations; 408.8 current ops/sec; est completion in 32 seconds [READ AverageLatency(us)=3574.86]  [UPDATE AverageLatency(us)=10919.36] 
+2020-12-20 16:35:52:787 95 sec: 38080 operations; 202.8 current ops/sec; est completion in 30 seconds [READ AverageLatency(us)=12077.15] [CLEANUP AverageLatency(us)=0.5] [UPDATE AverageLatency(us)=7603.26] 
+2020-12-20 16:35:57:787 100 sec: 39961 operations; 376.2 current ops/sec; est completion in 26 seconds [READ AverageLatency(us)=4213.27]  [UPDATE AverageLatency(us)=2386.37] 
+2020-12-20 16:36:02:787 105 sec: 41579 operations; 323.6 current ops/sec; est completion in 22 seconds [READ AverageLatency(us)=1923.06]  [UPDATE AverageLatency(us)=2220.87] 
+2020-12-20 16:36:07:787 110 sec: 42324 operations; 149 current ops/sec; est completion in 20 seconds [READ AverageLatency(us)=7564.4]  [UPDATE AverageLatency(us)=7282.4] 
+2020-12-20 16:36:12:787 115 sec: 44156 operations; 366.47 current ops/sec; est completion in 16 seconds [READ AverageLatency(us)=4341.68]  [UPDATE AverageLatency(us)=2352.11] 
+2020-12-20 16:36:17:787 120 sec: 46459 operations; 460.51 current ops/sec; est completion in 10 seconds [READ AverageLatency(us)=2024.87]  [UPDATE AverageLatency(us)=2293.3] 
+2020-12-20 16:36:22:787 125 sec: 47886 operations; 285.4 current ops/sec; est completion in 6 second [READ AverageLatency(us)=1998.7]  [UPDATE AverageLatency(us)=5040.7] 
+2020-12-20 16:36:27:509 129 sec: 50000 operations; 447.69 current ops/sec; [READ AverageLatency(us)=2118.31] [CLEANUP AverageLatency(us)=1] [UPDATE AverageLatency(us)=2338.87] 
+[OVERALL], RunTime(ms), 129723
+[OVERALL], Throughput(ops/sec), 385.4366611934661
+[TOTAL_GCS_G1_Young_Generation], Count, 14
+[TOTAL_GC_TIME_G1_Young_Generation], Time(ms), 67
+[TOTAL_GC_TIME_%_G1_Young_Generation], Time(%), 0.05164851259992446
+[TOTAL_GCS_G1_Old_Generation], Count, 0
+[TOTAL_GC_TIME_G1_Old_Generation], Time(ms), 0
+[TOTAL_GC_TIME_%_G1_Old_Generation], Time(%), 0.0
+[TOTAL_GCs], Count, 14
+[TOTAL_GC_TIME], Time(ms), 67
+[TOTAL_GC_TIME_%], Time(%), 0.05164851259992446
+[READ], Operations, 25051
+[READ], AverageLatency(us), 6462.178236397748
+[READ], MinLatency(us), 1053
+[READ], MaxLatency(us), 3283601
+[READ], Return=OK, 25051
+[READ], 0, 9424.332506203475
+[READ], 5000, 11696.484337349397
+[READ], 10000, 6334.996920708237
+[READ], 15000, 5723.42156133829
+[READ], 20000, 7147.151937984496
+[READ], 25000, 7743.723825226711
+[READ], 30000, 8513.617818484596
+[READ], 35000, 5410.811040339703
+[READ], 40000, 9443.53315168029
+[READ], 45000, 9232.267979452055
+[READ], 50000, 5041.912863070539
+[READ], 55000, 10436.60531309298
+[READ], 60000, 7691.298676748582
+[READ], 65000, 6696.805892547661
+[READ], 70000, 5679.711313394018
+[READ], 75000, 8158.072614107884
+[READ], 80000, 11886.506402793946
+[READ], 85000, 3434.463227222832
+[READ], 90000, 21890.544342507645
+[READ], 95000, 2108.678825622776
+[READ], 100000, 4624.9644322845415
+[READ], 105000, 1981.6771653543308
+[READ], 110000, 3916.8371665133395
+[READ], 115000, 2049.278529980658
+[READ], 120000, 1990.6609124537608
+[READ], 125000, 2129.926373626374
+[CLEANUP], Operations, 4
+[CLEANUP], AverageLatency(us), 1.5
+[CLEANUP], MinLatency(us), 0
+[CLEANUP], MaxLatency(us), 4
+[CLEANUP], 0, 4.0
+[CLEANUP], 35000, 0.5
+[CLEANUP], 75000, 1.0
+[UPDATE], Operations, 24949
+[UPDATE], AverageLatency(us), 8169.792937592689
+[UPDATE], MinLatency(us), 1143
+[UPDATE], MaxLatency(us), 2738267
+[UPDATE], Return=OK, 24949
+[UPDATE], 0, 32352.928571428572
+[UPDATE], 5000, 37261.45036319613
+[UPDATE], 10000, 10632.112221368177
+[UPDATE], 15000, 8997.086298258895
+[UPDATE], 20000, 8407.340735068912
+[UPDATE], 25000, 9443.616766467067
+[UPDATE], 30000, 6583.254740313273
+[UPDATE], 35000, 9641.715985130111
+[UPDATE], 40000, 8935.900473933649
+[UPDATE], 45000, 8472.445004198153
+[UPDATE], 50000, 7666.425246826516
+[UPDATE], 55000, 3930.046511627907
+[UPDATE], 60000, 6484.817743490839
+[UPDATE], 65000, 12956.165480427046
+[UPDATE], 70000, 6639.675375571522
+[UPDATE], 75000, 12721.39263803681
+[UPDATE], 80000, 10330.816304347825
+[UPDATE], 85000, 12262.475760992109
+[UPDATE], 90000, 8271.062034739454
+[UPDATE], 95000, 2371.3865698729583
+[UPDATE], 100000, 2186.159400544959
+[UPDATE], 105000, 9653.454887218046
+[UPDATE], 110000, 2355.9073083778967
+[UPDATE], 115000, 2290.360072926162
+[UPDATE], 120000, 4715.722433460076
+[UPDATE], 125000, 2356.5169491525426
