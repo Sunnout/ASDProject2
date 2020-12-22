@@ -1,6 +1,5 @@
 package protocols.agreement.utils;
 
-import protocols.agreement.messages.AcceptOkMessage;
 import protocols.statemachine.utils.OperationAndId;
 import pt.unl.fct.di.novasys.network.data.Host;
 
@@ -90,10 +89,6 @@ public class MultiPaxosState {
         return this.membership.size() / 2 + 1;
     }
 
-    public int getNumberOfAcceptOks(){
-        return haveAccepted.size();
-    }
-
     public void addReplicaToMembership(Host replica) {
         if(!replica.equals(this.replicaToRemove))
             this.membership.add(replica);
@@ -132,19 +127,12 @@ public class MultiPaxosState {
         return prepareOkCounter;
     }
 
-    public void resetPrepareOkCounter() {
-        this.prepareOkCounter = 0;
-    }
-
     public void incrementPrepareOkCounter() {
         this.prepareOkCounter += 1;
     }
 
    public void addHostToHaveAccepted(Host h){
         haveAccepted.add(h);
-   }
-   public void resetHaveAccepted(){
-        haveAccepted.clear();
    }
    public boolean hasAcceptOkQuorum(){
         if(membership.size() == 0)

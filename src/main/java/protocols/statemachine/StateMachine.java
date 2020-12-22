@@ -38,24 +38,13 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.*;
 
-/**
- * This is NOT fully functional StateMachine implementation.
- * This is simply an example of things you can do, and can be used as a starting point.
- * <p>
- * You are free to change/delete anything in this class, including its fields.
- * The only thing that you cannot change are the notifications/requests between the StateMachine and the APPLICATION
- * You can change the requests/notification between the StateMachine and AGREEMENT protocol, however make sure it is
- * coherent with the specification shown in the project description.
- * <p>
- * Do not assume that any logic implemented here is correct, think for yourself!
- */
 public class StateMachine extends GenericProtocol {
 
     private static final Logger logger = LogManager.getLogger(StateMachine.class);
 
-    public final static String ADD_REPLICA = "add";
-    public final static String REM_REPLICA = "remove";
-    public final static byte MEMBERSHIP_OP_TYPE = 2;
+    public final static String ADD_REPLICA = "add"; // Add replica operation ID
+    public final static String REM_REPLICA = "remove"; // Remove replica operation ID
+    public final static byte MEMBERSHIP_OP_TYPE = 2; // Membership operation type
 
     private enum State {JOINING, ACTIVE}
 
@@ -202,7 +191,6 @@ public class StateMachine extends GenericProtocol {
                     sendRequest(new ProposeRequest(currentInstance, request.getOpId(), request.getOperation()),
                             protocolId);
                 }
-
                 // Else if we are running multipaxos and we are not the leader,
                 // send the new operation to the leader
                 else {
@@ -231,7 +219,7 @@ public class StateMachine extends GenericProtocol {
 
         if (h != null) {
             logger.debug("Sending membership: {} to {} in instance {}", membership, h, instance);
-
+            // Send state to replica that wants to join the system
             if(isPaxos)
                 sendMessage(new AddReplicaReply(instance, reply.getState(), membership), h);
 
@@ -294,19 +282,22 @@ public class StateMachine extends GenericProtocol {
     }
 
     private void uponNewLeaderNotification(NewLeaderNotification notification, short sourceProto) {
-        // Received from MultiPaxos notification there is a new leader
+        // Notification received from MultiPaxos that there is a new leader
         Host newLeader = notification.getNewLeader();
         logger.debug("Changing leader from {} to {}", currentLeader, newLeader);
         currentLeader = newLeader;
 
         if(currentLeader.compareTo(self) != 0) {
+            // If I am not the leader, clear some of the ops that I might have received from others
+            // and send my pendings ops to the new leader
             possibleLeaderOps.clear();
             sendMessage(new ProposeToLeaderMessage(pendingOps), currentLeader);
             logger.debug("Sent {} operations to leader", pendingOps.size());
 
-        } else {
-            pendingOps.addAll(possibleLeaderOps);
         }
+        // If I am the leader, save all ops that others sent my in my pending ops list
+        else
+            pendingOps.addAll(possibleLeaderOps);
     }
 
     /*--------------------------------- Messages ---------------------------------------- */
@@ -322,6 +313,7 @@ public class StateMachine extends GenericProtocol {
             OperationAndId opnId = new OperationAndId(op, UUID.randomUUID());
             pendingOps.add(opnId);
 
+            // If I haven't proposed anything this intance, propose add replica
             if(pendingOps.size() == 1){
                 short protocolId = isPaxos ? PaxosAgreement.PROTOCOL_ID : MultiPaxosAgreement.PROTOCOL_ID;
 
@@ -331,6 +323,7 @@ public class StateMachine extends GenericProtocol {
                 }
             }
 
+            // If this is multipaxos and I am not the leader, send him the operation
             if(currentLeader != null && currentLeader.compareTo(self) != 0){
                 List<OperationAndId> newOpList = new ArrayList<>();
                 newOpList.add(opnId);
@@ -367,8 +360,7 @@ public class StateMachine extends GenericProtocol {
     }
 
     private void uponProposeToLeaderMsg(ProposeToLeaderMessage msg, Host host, short sourceProto, int channelId) {
-        // Adding proposed operations to pending operations, we are the new leader
-        // TODO check if there is membership operations, insert in head
+        // Adding proposed operations to pending operations
         try {
             List<OperationAndId> proposedOperations = msg.getProposedOperations();
             if(currentLeader != null && currentLeader.compareTo(self) == 0 ){
@@ -384,9 +376,9 @@ public class StateMachine extends GenericProtocol {
                             MultiPaxosAgreement.PROTOCOL_ID);
                 }
             }
-            else{
+            // If I am not sure if I am the leader, buffer operations
+            else
                 possibleLeaderOps.addAll(proposedOperations);
-            }
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -486,28 +478,22 @@ public class StateMachine extends GenericProtocol {
             logger.debug("Connection to host {} died, going to remove him", h);
 
             if(isPaxos || currentLeader == null || (currentLeader.compareTo(self) == 0)) {
-                // Add remove operation to head of list, to minimize no outgoing connection errors
                 Operation op = new Operation(MEMBERSHIP_OP_TYPE, REM_REPLICA, hostToByteArray(h));
-
                 short protocolId = isPaxos ? PaxosAgreement.PROTOCOL_ID : MultiPaxosAgreement.PROTOCOL_ID;
 
+                // Add remove operation to head of list, to minimize no outgoing connection errors
                 if (pendingOps.size() == 0)
                     pendingOps.add(0, new OperationAndId(op, UUID.randomUUID()));
-
                 else
                     pendingOps.add(1, new OperationAndId(op, UUID.randomUUID()));
 
+                // Propose remove replica if I have not proposed anything
                 if (pendingOps.size() == 1) {
                     OperationAndId opnId = pendingOps.get(0);
                     sendRequest(new ProposeRequest(currentInstance, opnId.getOpId(), opnId.getOperation().toByteArray()),
                             protocolId);
                 }
             }
-
-            else if(currentLeader.compareTo(h) == 0){
-
-            }
-
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -547,5 +533,4 @@ public class StateMachine extends GenericProtocol {
 
         this.state = State.ACTIVE;
     }
-
 }

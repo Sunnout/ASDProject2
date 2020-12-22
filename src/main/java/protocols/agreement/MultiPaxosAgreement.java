@@ -30,11 +30,6 @@ import java.util.*;
 
 public class MultiPaxosAgreement extends GenericProtocol {
 
-    //TODO mudança de lider: novo lider tem que ter sn maior que o anterior.
-
-    //TODO Quando muda lider, outros recebem prepare desse lider e
-    // nos prepares oks mandam todos os valores anteriores aceites nas intâncias anteriores
-
     private static final Logger logger = LogManager.getLogger(MultiPaxosAgreement.class);
 
     //Protocol information, to register in babel
@@ -42,10 +37,10 @@ public class MultiPaxosAgreement extends GenericProtocol {
     public final static String PROTOCOL_NAME = "MultiPaxosAgreement";
 
     private Host myself;
-    private Host currentLeader;
+    private Host currentLeader; // Current leader replica
     private int currentInstance; // Instance that is currently running
     private int joinedInstance; // Instance in which we joined the system
-    private int currentSn;
+    private int currentSn; // SeqNumber of the current leader
     private Map<Integer, MultiPaxosState> paxosByInstance; // PaxosState for each instance
 
     public MultiPaxosAgreement(Properties props) throws IOException, HandlerRegistrationException {
@@ -109,6 +104,7 @@ public class MultiPaxosAgreement extends GenericProtocol {
 
             // If the message is not from an instance that has already ended
             if (instance >= currentInstance) {
+                // If I am not the host and there is no leader (or the sn of the msg is higher)
                 if(host.compareTo(myself) != 0 && (currentLeader == null || msg.getSn() > currentSn)) {
                     logger.debug("uponPrepareMessage: new leader is {}", host);
                     currentLeader = host;
@@ -116,6 +112,7 @@ public class MultiPaxosAgreement extends GenericProtocol {
                     triggerNotification(new NewLeaderNotification(currentLeader));
                 }
 
+                // Send prepareOks to myself or to the current leader
                 if(host.compareTo(myself) == 0 || currentLeader.compareTo(host) == 0) {
                     logger.debug("uponPrepareMessage: sending prepare ok to {}", host);
                     sendMessage(new PrepareOkMessage(instance, null, null, -1, currentSn), host);
@@ -170,7 +167,8 @@ public class MultiPaxosAgreement extends GenericProtocol {
         try {
             int instance = msg.getInstance();
 
-            //TODO DARÁ MERDA com mudança de lider?
+            // If we receive an accept in the instance we joined,
+            // we make the sender our leader
             if(currentInstance == joinedInstance) {
                 currentLeader = host;
             }
@@ -183,11 +181,10 @@ public class MultiPaxosAgreement extends GenericProtocol {
                 logger.debug("uponAcceptMessage: MsgSn: {}, MsgInstance: {}", msgSn, instance);
 
                 OperationAndId opnId = new OperationAndId(Operation.fromByteArray(msg.getOp()), msg.getOpId());
-                // Send acceptOk with that seqNumber and value to all learners
 
                 if(ps.isMembershipOk()){
                     logger.debug("uponAcceptMessage: Membership: {}", ps.getMembership());
-
+                    // Send acceptOk with that seqNumber and value to all learners
                     for (Host h : ps.getMembership()) {
                         sendMessage(new AcceptOkMessage(instance, opnId.getOpId(),
                                 opnId.getOperation().toByteArray(), msgSn), h);
@@ -230,7 +227,7 @@ public class MultiPaxosAgreement extends GenericProtocol {
             logger.debug("uponAcceptOkMessage: Received MsgSn: {}, MsgInstance: {}", msg.getHighestAccept(), instance);
 
             // If the message is not from an instance that has already ended
-            // and we don't have a majority of acceptOks
+            // and the accept is for the sequence number we are accepting
             if (instance >= currentInstance && msg.getHighestAccept() == ps.getToAcceptSn()) {
 
                 logger.debug("uponAcceptOkMessage: Adding host to accepted hosts");
@@ -252,11 +249,12 @@ public class MultiPaxosAgreement extends GenericProtocol {
                         currentInstance++;
                     }
 
+                    // Cancel timer that waits for responses
                     if(currentLeader.compareTo(myself) == 0) {
                         cancelTimer(ps.getPaxosLeaderTimer());
                     }
                 }
-
+            // If we have not received the accept message, store the acceptOk info for later
             } else if(instance >= currentInstance && ps.getToAcceptSn() == -1) {
                 ps.addToAcceptOksList(new HostAndSn(host, msg.getHighestAccept()));
             }
@@ -304,14 +302,14 @@ public class MultiPaxosAgreement extends GenericProtocol {
     private void uponProposeRequest(ProposeRequest request, short sourceProto) {
         logger.debug("uponProposeRequest: New Propose");
 
+        // Random timer to avoid replicas sending prepares at the same time
         if (currentLeader == null) {
             Random r = new Random();
             setupTimer(new MultiPaxosStartTimer(request), r.nextInt(5000));
         }
-
-        else {
+        // Proceed if I am the leader
+        else
             proposeRequest(request);
-        }
     }
 
     private void uponAddReplicaRequest(AddReplicaRequest request, short sourceProto) {
@@ -362,22 +360,23 @@ public class MultiPaxosAgreement extends GenericProtocol {
     /*--------------------------------- Timers ---------------------------------------- */
 
     private void uponMultiPaxosLeaderTimer(MultiPaxosLeaderAcceptTimer paxosTimer, long timerId) {
-        //TODO ver se já decidiu algo
         MultiPaxosState ps = getPaxosInstance(currentInstance);
         logger.debug("MultiPaxosLeaderTimer Timeout in instance {}", currentInstance);
 
         List<Host> membership = ps.getMembership();
         ProposeRequest request = paxosTimer.getRequest();
-
+        // Send accepts again
         membership.forEach(h -> sendMessage(new AcceptMessage(currentInstance, request.getOpId(),
                 request.getOperation(), currentSn), h));
 
+        // Setup new timer to wait for quorum of responses
         long newTimerId = setupTimer(new MultiPaxosLeaderAcceptTimer(request), 2000);
         ps.setPaxosLeaderTimer(newTimerId);
         logger.debug("New MultiPaxosLeaderAcceptTimer created with id {}", newTimerId);
     }
 
     private void uponMultiPaxosStartTimer(MultiPaxosStartTimer paxosTimer, long timerId) {
+        // Send first prepares for leader election, if there is no leader
         if (currentLeader == null){
             logger.debug("MultiPaxosStartTimer timeout, will propose");
             proposeRequest(paxosTimer.getRequest());
@@ -401,15 +400,12 @@ public class MultiPaxosAgreement extends GenericProtocol {
         try{
             if (ps.isMembershipOk()) {
                 logger.debug("Membership is ok to propose in {}", currentInstance);
-                // Get membership from last instance and use it for this instance
-                // because we already know if we added, removed or stayed the same
-                // Send prepares to every node in membership
                 List<Host> membership = ps.getMembership();
 
                 OperationAndId opnId = new OperationAndId(Operation.fromByteArray(request.getOperation()),
                         request.getOpId());
 
-                // If I dont know who the leader is, send prepares
+                // If I dont know who the leader is, send prepares for leader election
                 if (currentLeader == null) {
                     ps.generateSn(myself);
                     currentSn = ps.getSn();
@@ -417,13 +413,13 @@ public class MultiPaxosAgreement extends GenericProtocol {
                     logger.debug("uponProposeRequest: Sent Prepares");
                     ps.setInitialProposal(opnId);
 
-                // If I am the leader, send accepts, always with the same sn
+                // If I am the leader, send accepts, always with the same seqNumber
                 } else if (currentLeader.compareTo(myself) == 0) {
                     logger.debug("uponProposeRequest: Sent Accepts");
                     membership.forEach(h -> sendMessage(new AcceptMessage(instance, request.getOpId(),
                             request.getOperation(), currentSn), h));
 
-
+                    // Setup new timer to wait for quorum of responses
                     long timerId = setupTimer(new MultiPaxosLeaderAcceptTimer(request), 2000);
                     ps.setPaxosLeaderTimer(timerId);
                     logger.debug("New MultiPaxosLeaderAcceptTimer created with id {}", timerId);
@@ -464,8 +460,8 @@ public class MultiPaxosAgreement extends GenericProtocol {
     private void canDecide(int instance) throws IOException {
         MultiPaxosState ps = getPaxosInstance(instance);
 
-        // If we have received an accept ok quorum and we have received the corresponding accept,
-        // we can decide
+        // If we have an acceptOk quorum and we have received
+        // the corresponding accept, we can decide
         if(ps.hasAcceptOkQuorum() && ps.getToAcceptOpnId() != null) {
             ps.setToDecide(ps.getToAcceptOpnId());
             OperationAndId opnId = ps.getToAcceptOpnId();

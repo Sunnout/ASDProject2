@@ -49,12 +49,10 @@ public class Main {
         // StateMachine Protocol
         StateMachine sm = new StateMachine(props, isPaxos);
         // Agreement Protocol
-
         GenericProtocol agreement;
 
         if(isPaxos)
             agreement = new PaxosAgreement(props);
-
         else
             agreement = new MultiPaxosAgreement(props);
 

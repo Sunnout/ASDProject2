@@ -1,9 +1,0 @@
-[5003] [32mI[19:33:45,681] [main]HashApp:[m Listening on localhost:6003
-[5003] [32mI[19:33:46,184] [main]StateMachine:[m Listening on localhost:5003
-[5003] [32mI[19:33:46,221] [main]StateMachine:[m My initial membership [127.0.0.1:5000, 127.0.0.1:5001, 127.0.0.1:5002] 
-[5003] [32mI[19:33:46,223] [main]StateMachine:[m Starting in JOINING as I am not part of initial membership
-[5003] [32mI[19:33:46,231] [400-PaxosAgreement]PaxosAgreement:[m Channel 2 created, I am 127.0.0.1:5003
-[5003] [32mI[19:33:46,334] [200-StateMachine]StateMachine:[m Connection to 127.0.0.1:5000 is up
-[5003] [32mI[19:33:56,292] [200-StateMachine]StateMachine:[m Connection to 127.0.0.1:5002 is up
-[5003] [32mI[19:33:56,335] [200-StateMachine]StateMachine:[m Connection to 127.0.0.1:5001 is up
-[5003] [32mI[19:34:21,289] [Thread-1]Main:[m Goodbye
